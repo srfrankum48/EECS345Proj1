@@ -15,13 +15,12 @@
       ((eq? '* (operator expression)) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? '/ (operator expression)) (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? '% (operator expression)) (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '== (operator expression)) if (eq? leftoperand rightoperand)
-                                       #t)
-      ((eq? '!= (operator expression)) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '< (operator expression)) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '> (operator expression)) (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '<= (operator expression)) (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '>= (operator expression)) (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? '== (operator expression)) (eq? leftoperand rightoperand))
+      ((eq? '!= (operator expression)) (eq? leftoperand rightoperand)) ; this isnt right need a not here
+      ((eq? '< (operator expression)) (< (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? '> (operator expression)) (> (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? '<= (operator expression))(<= (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? '>= (operator expression)) (>= (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       (else (error 'badop "The operator is not known")))))
 
 ; The helper methods to define and abstract away the operator, leftoperand, and rightoperand parts of an expression
