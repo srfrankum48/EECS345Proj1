@@ -1,1 +1,0 @@
-("7.5" racket ("47829ad44b0f1ff89f571eec14f08386b30492ce" . "c0203b4a00d789db09b0640fa0f0d1c7d3c4833c") #"C:\\Users\\Sam Ehrenstein\\Documents\\EECS345Proj1\\lex.rkt" (collects #"errortrace" #"errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))
