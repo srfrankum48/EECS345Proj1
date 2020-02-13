@@ -1,0 +1,28 @@
+#lang racket
+(require "simpleParser.rkt")
+
+; M_value (<value1> + <value2>, state) = M_value(<value1>, state) + M_value(<value2>, state)
+(define Mvalue
+  (lambda (expression state)
+    (cond
+      [(null? expression) (error 'parser "parser should have caught this")]
+      [(number? expression) expression]
+      [(symbol? expression) (Mvar expression state)]
+      [(eq? '+ (operator expression)) (+ (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))]
+      [(eq? '- (operator expression)) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))]
+      [(eq? '* (operator expression)) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))]
+      [(eq? '/ (operator expression)) (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))]
+      [(eq? '% (operator expression)) (modulo (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))]
+      [else (error 'err "unknown operator")])))
+
+; Helper function for getting the value of a variable from the state
+(define Mvar
+  (lambda (varname state)
+    (if (eq? varname (car (car state)))
+        (car (cadr state))
+        (Mvar varname (cons (cdr (car state)) (cons (cdr (cadr state)) '()))))))
+
+; Assumes infix notation
+(define operator cadr)
+(define leftoperand car)
+(define rightoperand caddr)
