@@ -29,7 +29,7 @@
     (cond
       [(null? expression) state]
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]
-      [(and (eq? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Mvalue (rightoperand expression)state) (Remove (leftoperand expression) state))]
+      [(and (eq? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Mvalue (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
       [(eq? 'var (keyword expression)) (Add* (leftoperand expression) state)])))
 
