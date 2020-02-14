@@ -12,6 +12,8 @@ load "simpleParser.rkt"
     (cond
       ((null? expression) (error 'parser "parser should have caught this"))
       ((number? expression) expression)
+      ((and (symbol? expression) (declared? expression state)) (Lookup expression state))
+      ((and (symbol? expression) (error 'Mvalue "You have not declared this variable")))
       ((eq? '+ (operator expression)) (+ (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? '- (operator expression)) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? '* (operator expression)) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
@@ -81,7 +83,7 @@ load "simpleParser.rkt"
       [else (doublecons (car (car state)) (car (cadr state)) (Remove name (doublecdr state)))])))
 
 ; Check if a variable has been declared.
-; Note that the list of values gets thrown out after the first call, as it is not needed. This avoids the need to handle the case where it is null.
+; Note that the list of values gets thrown out after the first call, as it is not relevant. This avoids the need to handle the case where it is null.
 (define declared?
   (lambda (name state)
     (cond
