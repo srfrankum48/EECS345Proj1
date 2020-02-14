@@ -1,6 +1,11 @@
 #lang racket
 load "simpleParser.rkt"
 
+; interpret starts the parsing of the 
+(define interpret
+  (lambda (filename)
+    (Mvalue 'return (Mstate (parser filename) '()))))
+
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
 ; The following mathematical operations are implemented : +, -, *, /, % (including the unary -),
 ; the following comparison operators are implemented: ==, !=, <, >, <=. >=, and the following boolean operators: &&, ||, !.
