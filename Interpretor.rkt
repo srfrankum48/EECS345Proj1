@@ -1,10 +1,10 @@
 #lang racket
-load "simpleParser.rkt"
+(require "simpleParser.rkt")
 
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Mvalue 'return (Mstate (parser filename) '()))))
+    (Operate 'retur (Mstate (parser filename) '()))))
 
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
 ; The following mathematical operations are implemented : +, -, *, /, % (including the unary -),
@@ -12,25 +12,32 @@ load "simpleParser.rkt"
 ; Variables may store values of type int as well as true and false. You do not have to detect an error if a program uses a type
 ; incorrectly (but it is not hard to add the error check). You do not have to implement short-circuit evaluation of && or ||, but you are welcome to do so.
 ; This is an example of using abstraction to make the code easier to read and maintain
-(define Mvalue
+(define Operate
+  (lambda (expression state)
+    (cond
+      [(null? expression) (error 'parser "parser should have caught this")]
+      [(number? expression) expression]
+      [(keyword? (car expression)) (keyword (car expression) expression state)]
+      [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
+      [(and (symbol? expression) (error Operate "You have not declared this variable"))]
+      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [else (error 'badop "The operator is not known")])))
+
+(define Compare
   (lambda (expression state)
     (cond
       ((null? expression) (error 'parser "parser should have caught this"))
-      ((number? expression) expression)
-      ((and (symbol? expression) (declared? expression state)) (Lookup expression state))
-      ((and (symbol? expression) (error 'Mvalue "You have not declared this variable")))
-      ((eq? '+ (operator expression)) (+ (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '- (operator expression)) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '* (operator expression)) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '/ (operator expression)) (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '% (operator expression)) (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? '== (operator expression)) (eq? leftoperand rightoperand))
       ((eq? '!= (operator expression)) (not (eq? leftoperand rightoperand))) 
-      ((eq? '< (operator expression)) (< (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '> (operator expression)) (> (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '<= (operator expression))(<= (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? '>= (operator expression)) (>= (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ;((eq? '&& (operator expression)) (bool? (Mvalue (leftoperand expression) state) 
+      ((eq? '< (operator expression)) (< (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
+      ((eq? '> (operator expression)) (> (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
+      ((eq? '<= (operator expression))(<= (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
+      ((eq? '>= (operator expression)) (>= (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
+      ;((eq? '&& (operator expression)) (bool? (Compare (leftoperand expression) state)
       (else (error 'badop "The operator is not known")))))
 
 ; General description of Mstate:
@@ -46,9 +53,9 @@ load "simpleParser.rkt"
     (cond
       [(null? expression) state]
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]
-      [(and (eq? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Mvalue (rightoperand expression) state) (Remove (leftoperand expression) state))]
+      [(and (eq? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
-      [(eq? 'var (keyword expression)) (Add* (leftoperand expression) state)])))
+      [(eq? 'var (car expression)) (Add* (leftoperand expression) state)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
@@ -112,10 +119,48 @@ load "simpleParser.rkt"
       [(eq? varname (car (car state))) (car (cadr state))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())))])))
 
+; keyword? checks if value is a known keyword
+(define keyword?
+  (lambda (word)
+    (cond
+      [(null? word) #f]
+      [(eq? 'while word) #t]
+      [(eq? 'if word) #t]
+      [(eq? 'return word) #t]
+      [else #f])))
+
+; keyword 
+(define keyword
+  (lambda (word expression state)
+    (cond
+      [(null? word) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
+      [(eq? 'while word) (while* (car (cdr expression)) (caddr expression) state)]
+      [(eq? 'if word) (if* (car (cdr expression)) (caddr expression) state)]
+      [(eq? 'return word) (return* (cdr expression) state)])))
+
+; while* defines how to handle the keyword 'while'
+(define while*
+  (lambda (condition body state)
+    (if (Compare condition state)
+        (while* condition body (Mstate body state))
+         state)))
+
+; if defines how to handle the keyword 'if'
+(define if*
+  (lambda (condition body state)
+    (if (Compare condition state)
+        (Mstate body state)
+        state)))
+
+; return* defines how to handle the keyword 'return'
+(define return*
+  (lambda (body state)
+    (Operate body state)))
+
 ; Assumes infix notation
 (define operator car)
 (define leftoperand cadr)
 (define rightoperand caddr)
-
-; Get the keyword from a statement. Probably the same as operator, but maybe not.
-(define keyword car)
+    
+     
+          
