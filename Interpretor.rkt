@@ -4,7 +4,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Operate 'retur (Mstate (parser filename) '()))))
+    (Operate 'return (Mstate (parser filename) '()))))
 
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
 ; The following mathematical operations are implemented : +, -, *, /, % (including the unary -),
@@ -16,8 +16,7 @@
   (lambda (expression state)
     (cond
       [(null? expression) (error 'parser "parser should have caught this")]
-      [(number? expression) expression]
-      [(keyword? (car expression)) (keyword (car expression) expression state)]
+      [(number?  expression) expression]
       [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
       [(and (symbol? expression) (error Operate "You have not declared this variable"))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
@@ -25,6 +24,7 @@
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(keyword? (operator expression)) (keyword expression state)]
       [else (error 'badop "The operator is not known")])))
 
 (define Compare
@@ -131,12 +131,13 @@
 
 ; keyword 
 (define keyword
-  (lambda (word expression state)
+  (lambda (expression state)
     (cond
-      [(null? word) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
-      [(eq? 'while word) (while* (car (cdr expression)) (caddr expression) state)]
-      [(eq? 'if word) (if* (car (cdr expression)) (caddr expression) state)]
-      [(eq? 'return word) (return* (cdr expression) state)])))
+      [(null? (car expression)) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
+      [(eq? 'while (car expression)) (while* (car (cdr expression)) (caddr expression) state)]
+      [(eq? 'if (car expression)) (if* (car (cdr expression)) (caddr expression) state)]
+      [(eq? 'return (car expression)) (return* (cdr expression) state)]
+      )))
 
 ; while* defines how to handle the keyword 'while'
 (define while*
