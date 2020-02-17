@@ -1,0 +1,4 @@
+var x = true;
+var y = true;
+
+return !x && y;

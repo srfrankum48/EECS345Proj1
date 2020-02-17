@@ -17,6 +17,8 @@
     (cond
       [(null? expression) (error 'parser "parser should have caught this")]
       [(number?  expression) expression]
+      [(eq? 'true expression) 'true]
+      [(eq? 'false expression) 'false]
       [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
       [(and (symbol? expression) (error 'variable "You have not declared this variable"))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
@@ -24,15 +26,15 @@
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(equal? '== (operator expression)) (eq? leftoperand rightoperand)]
-      [(eq? '!= (operator expression)) (not (eq? leftoperand rightoperand))] 
-      [(eq? '< (operator expression)) (< (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '> (operator expression)) (> (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '<= (operator expression))(<= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '>= (operator expression)) (>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '&& (operator expression)) (and (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '|| (operator expression)) (or (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '! (operator expression)) (not (Operate (leftoperand expression) state))]
+      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
+      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))))] 
+      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
+      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
+      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
+      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
+      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state)) (symboltoBool(Operate (rightoperand expression) state))))]
+      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state)) (symboltoBool(Operate (rightoperand expression) state))))]
+      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state))))]
       [else (error 'badop "The operator is not known")]
       )))
       
@@ -166,7 +168,7 @@
 (define leftoperand cadr)
 (define rightoperand caddr)
 
-; Convert boolean to string
+; Convert boolean to symbol
 (define booltoSymbol
   (lambda (bool)
     (cond
@@ -175,13 +177,13 @@
     [(eq? bool #f) 'false]
     [else "error: non-boolean provided"])))
     
-; Convert string to boolean
-(define stringtobool
+; Convert symbol to boolean
+(define symboltoBool
   (lambda (val)
     (cond
-      [(null? val) "error: no string provided"]
-      [(eq? val "true") #t]
-      [(eq? val "false") #f]
-      [else "error: non-boolean string provided"])))
+      [(null? val) "error: no symbol provided"]
+      [(eq? val 'true) #t]
+      [(eq? val 'false) #f]
+      [else "error: non-boolean symbol provided"])))
       
           
