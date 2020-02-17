@@ -32,7 +32,7 @@
       [(eq? '>= (operator expression)) (>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '&& (operator expression)) (and (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '|| (operator expression)) (or (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '! (operator expression)) (not (Operate (rightoperand expression) state))]
+      [(eq? '! (operator expression)) (not (Operate (leftoperand expression) state))]
       [else (error 'badop "The operator is not known")]
       )))
       
@@ -165,6 +165,23 @@
 (define operator car)
 (define leftoperand cadr)
 (define rightoperand caddr)
+
+; Convert boolean to string
+(define booltoSymbol
+  (lambda (bool)
+    (cond
+    [(null? bool) "error: no bool provided"]
+    [(eq? bool #t) 'true]
+    [(eq? bool #f) 'false]
+    [else "error: non-boolean provided"])))
     
-     
+; Convert string to boolean
+(define stringtobool
+  (lambda (val)
+    (cond
+      [(null? val) "error: no string provided"]
+      [(eq? val "true") #t]
+      [(eq? val "false") #f]
+      [else "error: non-boolean string provided"])))
+      
           
