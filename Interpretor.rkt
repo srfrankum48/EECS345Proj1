@@ -18,27 +18,29 @@
       [(null? expression) (error 'parser "parser should have caught this")]
       [(number?  expression) expression]
       [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
-      [(and (symbol? expression) (error Operate "You have not declared this variable"))]
+      [(and (symbol? expression) (error 'variable "You have not declared this variable"))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(keyword? (operator expression)) (keyword expression state)]
+      [(eq? '&& (operator expression)) (and (Compare (leftoperand expression) state) (Compare (car (rightoperand expression)) state)]]
+      [(eq? '|| (operator expression)) (or (Compare (leftoperand expression) state) (Compare (car (rightoperand expression)) state))]
+      [(eq? '! (operator expression)) (not (Operate (rightoperand expression) state))]
       [else (error 'badop "The operator is not known")])))
 
 (define Compare
   (lambda (expression state)
     (cond
-      ((null? expression) (error 'parser "parser should have caught this"))
-      ((eq? '== (operator expression)) (eq? leftoperand rightoperand))
-      ((eq? '!= (operator expression)) (not (eq? leftoperand rightoperand))) 
-      ((eq? '< (operator expression)) (< (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
-      ((eq? '> (operator expression)) (> (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
-      ((eq? '<= (operator expression))(<= (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
-      ((eq? '>= (operator expression)) (>= (Compare (leftoperand expression) state) (Compare (rightoperand expression) state)))
-      ;((eq? '&& (operator expression)) (bool? (Compare (leftoperand expression) state)
-      (else (error 'badop "The operator is not known")))))
+      [(null? expression) (error 'parser "parser should have caught this")]
+      [(eq? '== (operator expression)) (eq? leftoperand rightoperand)]
+      [(eq? '!= (operator expression)) (not (eq? leftoperand rightoperand))] 
+      [(eq? '< (operator expression)) (< (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '> (operator expression)) (> (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '<= (operator expression))(<= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '>= (operator expression)) (>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [else (error 'badop "The operator is not known")])))
+      
 
 ; General description of Mstate:
 ; When we declare a variable, it gets added to the end of the list of variables, with no corresponding value.
@@ -57,7 +59,8 @@
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
       [(and (eq? 'var (car expression)) (pair? (cdr (cdr expression)))) (Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? 'var (car expression)) (Add* (leftoperand expression) state)]
-      [(eq? 'return (car expression)) (Add 'return (Operate (leftoperand expression) state) (Remove (leftoperand expression) state))])))
+      [(eq? 'return (car expression)) (Add 'return (Operate (leftoperand expression) state) (Remove (leftoperand expression) state))]
+      [(keyword? (operator expression)) (keyword expression state)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
@@ -152,8 +155,11 @@
 (define if*
   (lambda (condition body state)
     (if (Compare condition state)
-        (Mstate body state)
-        state)))
+        (Mstate (car body) state)
+        (if (not (null? (car (cddr body))))
+            (Operate body (Mstate body state))
+            state)
+     )))
 
 ; return* defines how to handle the keyword 'return'
 (define return*
