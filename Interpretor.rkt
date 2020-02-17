@@ -24,21 +24,21 @@
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '&& (operator expression)) (and (Compare (leftoperand expression) state) (Compare (car (rightoperand expression)) state)]]
-      [(eq? '|| (operator expression)) (or (Compare (leftoperand expression) state) (Compare (car (rightoperand expression)) state))]
-      [(eq? '! (operator expression)) (not (Operate (rightoperand expression) state))]
       [else (error 'badop "The operator is not known")])))
 
 (define Compare
   (lambda (expression state)
     (cond
       [(null? expression) (error 'parser "parser should have caught this")]
-      [(eq? '== (operator expression)) (eq? leftoperand rightoperand)]
+      [(equal? '== (operator expression)) (eq? leftoperand rightoperand)]
       [(eq? '!= (operator expression)) (not (eq? leftoperand rightoperand))] 
       [(eq? '< (operator expression)) (< (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '> (operator expression)) (> (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '<= (operator expression))(<= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '>= (operator expression)) (>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '&& (operator expression)) (and (Compare (leftoperand expression) state) (Compare (rightoperand expression) state))]
+      [(eq? '|| (operator expression)) (or (Compare (leftoperand expression) state) (Compare (rightoperand expression) state))]
+      [(eq? '! (operator expression)) (not (Operate (rightoperand expression) state))]
       [else (error 'badop "The operator is not known")])))
       
 
@@ -55,7 +55,7 @@
     (cond
       [(null? expression) state]
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]
-      [(and (eq? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
+      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
       [(and (eq? 'var (car expression)) (pair? (cdr (cdr expression)))) (Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? 'var (car expression)) (Add* (leftoperand expression) state)]
@@ -155,10 +155,10 @@
 (define if*
   (lambda (condition body state)
     (if (Compare condition state)
-        (Mstate (car body) state)
-        (if (not (null? (car (cddr body))))
-            (Operate body (Mstate body state))
-            state)
+        (Mstate body state)
+        (if (null? (cdr body))
+            state
+            (Operate body (Mstate body state)))
      )))
 
 ; return* defines how to handle the keyword 'return'
