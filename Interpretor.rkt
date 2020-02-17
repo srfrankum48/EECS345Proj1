@@ -1,3 +1,7 @@
+; Sam Ehrenstein
+; Samantha Frankum
+; Niharika Karnik
+
 #lang racket
 (require "simpleParser.rkt")
 
@@ -20,7 +24,8 @@
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
-      [(and (symbol? expression) (error 'variable "You have not declared this variable"))]
+      [(and (symbol? expression) (error 'variable "Using variable without declaring it first"))]
+      [(and (eq? '- (operator expression)) (null? (cddr expression))) (- (Operate (leftoperand expression) state))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
@@ -137,26 +142,25 @@
     (cond
       [(null? (car expression)) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
       [(eq? 'while (car expression)) (while* (car (cdr expression)) (caddr expression) state)]
-      [(eq? 'if (car expression)) (if* (car (cdr expression)) (caddr expression) state)]
+      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state)]
       [(eq? 'return (car expression)) (return* (cdr expression) state)]
       )))
 
 ; while* defines how to handle the keyword 'while'
 (define while*
   (lambda (condition body state)
-    (if (Operate condition state)
+    (if (symboltoBool (Operate condition state))
         (while* condition body (Mstate body state))
          state)))
 
 ; if defines how to handle the keyword 'if'
 (define if*
-  (lambda (condition body state)
-    (if (Operate condition state)
+  (lambda (condition body otherwise state)
+    (if (symboltoBool(Operate condition state))
         (Mstate body state)
-        (if (null? (cdddr body))
+        (if (null? otherwise)
             state
-            (Operate (cdddr body) (Mstate body state)))
-     )))
+            (Mstate (car otherwise) state)))))
 
 ; return* defines how to handle the keyword 'return'
 (define return*

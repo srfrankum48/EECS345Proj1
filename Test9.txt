@@ -2,6 +2,4 @@ var x = 5;
 var y = 6;
 if (x == y)
   x = 10;
-else
-  x = 9;
 return x;
