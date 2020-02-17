@@ -24,22 +24,17 @@
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [else (error 'badop "The operator is not known")])))
-
-(define Compare
-  (lambda (expression state)
-    (cond
-      [(null? expression) (error 'parser "parser should have caught this")]
       [(equal? '== (operator expression)) (eq? leftoperand rightoperand)]
       [(eq? '!= (operator expression)) (not (eq? leftoperand rightoperand))] 
       [(eq? '< (operator expression)) (< (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '> (operator expression)) (> (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '<= (operator expression))(<= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '>= (operator expression)) (>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '&& (operator expression)) (and (Compare (leftoperand expression) state) (Compare (rightoperand expression) state))]
-      [(eq? '|| (operator expression)) (or (Compare (leftoperand expression) state) (Compare (rightoperand expression) state))]
+      [(eq? '&& (operator expression)) (and (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
+      [(eq? '|| (operator expression)) (or (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '! (operator expression)) (not (Operate (rightoperand expression) state))]
-      [else (error 'badop "The operator is not known")])))
+      [else (error 'badop "The operator is not known")]
+      )))
       
 
 ; General description of Mstate:
@@ -147,18 +142,18 @@
 ; while* defines how to handle the keyword 'while'
 (define while*
   (lambda (condition body state)
-    (if (Compare condition state)
+    (if (Operate condition state)
         (while* condition body (Mstate body state))
          state)))
 
 ; if defines how to handle the keyword 'if'
 (define if*
   (lambda (condition body state)
-    (if (Compare condition state)
+    (if (Operate condition state)
         (Mstate body state)
-        (if (null? (cdr body))
+        (if (null? (cdddr body))
             state
-            (Operate body (Mstate body state)))
+            (Operate (cdddr body) (Mstate body state)))
      )))
 
 ; return* defines how to handle the keyword 'return'
