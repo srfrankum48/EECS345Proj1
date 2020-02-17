@@ -4,7 +4,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Operate 'return (Mstate (parser filename) '()))))
+    (Operate 'return (Mstate (parser filename) '(()())))))
 
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
 ; The following mathematical operations are implemented : +, -, *, /, % (including the unary -),
@@ -55,7 +55,9 @@
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]
       [(and (eq? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
-      [(eq? 'var (car expression)) (Add* (leftoperand expression) state)])))
+      [(and (eq? 'var (car expression)) (pair? (cdr (cdr expression)))) (Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
+      [(eq? 'var (car expression)) (Add* (leftoperand expression) state)]
+      [(eq? 'return (car expression)) (Add 'return (Operate (leftoperand expression) state) (Remove (leftoperand expression) state))])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
