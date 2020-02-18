@@ -8,7 +8,9 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Operate 'return (Mstate (parser filename) '(()())))))
+    (Operate 'return (Mstate (parser filename) initialState))))
+
+(define initialState '(()()))
 
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
 ; The following mathematical operations are implemented : +, -, *, /, % (including the unary -),
@@ -25,7 +27,7 @@
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
       [(and (symbol? expression) (error 'variable "Using variable without declaring it first"))]
-      [(and (eq? '- (operator expression)) (null? (cddr expression))) (- (Operate (leftoperand expression) state))]
+      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
@@ -42,7 +44,11 @@
       [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state))))]
       [else (error 'badop "The operator is not known")]
       )))
-      
+
+; Tests if the list has a third element.
+(define third?
+  (lambda (lis)
+    (pair? (cddr lis))))   
 
 ; General description of Mstate:
 ; When we declare a variable, it gets added to the end of the list of variables, with no corresponding value.
@@ -56,12 +62,12 @@
   (lambda (expression state)
     (cond
       [(null? expression) state]
-      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]
+      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]  ; using car and cdr here because this is literally a list, not a list representing something
       [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
-      [(and (eq? 'var (car expression)) (pair? (cdr (cdr expression)))) (Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
-      [(eq? 'var (car expression)) (Add* (leftoperand expression) state)]
-      [(eq? 'return (car expression)) (Add 'return (Operate (leftoperand expression) state) (Remove (leftoperand expression) state))]
+      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
+      [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
+      [(eq? 'return (operator expression)) (Add 'return (Operate (leftoperand expression) state) (Remove (leftoperand expression) state))]
       [(keyword? (operator expression)) (keyword expression state)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
@@ -89,9 +95,6 @@
 
 ; Removes a variable and its value from the state.
 ; Right now, it will return the list without the variable and its value whether or not it is declared or initialized.
-; Possible change is to create an error if (car state) is ever null, as that means we're trying to remove a variable that
-; hasn't been declared. Only problem is that if we want to handle re-declaration (i.e. "var x" twice), this would break.
-; It also mixes state operations with error messages, so maybe not the best idea.
 (define Remove
   (lambda (name state)
     (cond
@@ -143,8 +146,7 @@
       [(null? (car expression)) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
       [(eq? 'while (car expression)) (while* (car (cdr expression)) (caddr expression) state)]
       [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state)]
-      [(eq? 'return (car expression)) (return* (cdr expression) state)]
-      )))
+      [(eq? 'return (car expression)) (return* (cdr expression) state)])))
 
 ; while* defines how to handle the keyword 'while'
 (define while*
@@ -153,7 +155,7 @@
         (while* condition body (Mstate body state))
          state)))
 
-; if defines how to handle the keyword 'if'
+; if* defines how to handle the keyword 'if'
 (define if*
   (lambda (condition body otherwise state)
     (if (symboltoBool(Operate condition state))
@@ -189,5 +191,3 @@
       [(eq? val 'true) #t]
       [(eq? val 'false) #f]
       [else "error: non-boolean symbol provided"])))
-      
-          
