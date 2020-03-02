@@ -8,7 +8,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Operate 'return (Mstate (parser filename) initialState))))
+    (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) k) (lambda (c) c) (lambda (e m) (error e m)))))))
 
 (define initialLayer '(()()))
 (define initialState (list initialLayer))
@@ -61,16 +61,16 @@
 ; The idea is to maintain separation between the instantiated and uninstantiated variables. We ensure in our Add and Remove functions that this
 ; is the case.
 (define Mstate
-  (lambda (expression state)
+  (lambda (expression state return break continue throw)
     (cond
       [(null? expression) state]
-      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]  ; using car and cdr here because this is literally a list, not a list representing something
+      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
+      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state) state)]
       [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state) state)]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
-      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state) state)]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
-      [(eq? 'return (operator expression)) (Add 'return (Operate (leftoperand expression) state) state)]
-      [(keyword? (operator expression)) (keyword expression state)])))
+      [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
+      [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
@@ -134,7 +134,8 @@
 (define declared?
   (lambda (name state)
     (cond
-      [(or (null? state) (null? (car state))) #f]
+      [(null? state) #f]
+      [(null? (car state)) #f]
       [(layered? state) (or (declared? name (toplayer state)) (declared? name (cdr state)))]
       [(eq? name (car (car state))) #t]
       [else (declared? name (cons (cdr (car state)) '()))])))
@@ -168,7 +169,8 @@
 (define Lookup
   (lambda (varname state)
     (cond
-      [(layered? state) (Lookup varname (toplayer state))]
+      [(and (layered? state) (declared? varname (toplayer state))) (Lookup varname (toplayer state))]
+      [(layered? state) (Lookup varname (cdr state))]
       [(null? (cadr state)) (error 'state "variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
       [(eq? varname (car (car state))) (unbox (car (cadr state)))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())))])))
@@ -181,37 +183,40 @@
       [(eq? 'while word) #t]
       [(eq? 'if word) #t]
       [(eq? 'return word) #t]
+      [(eq? 'break word) #t]
+      [(eq? 'continue word) #t]
       [else #f])))
 
 ; keyword 
 (define keyword
-  (lambda (expression state)
+  (lambda (expression state return break continue throw)
     (cond
       [(null? (car expression)) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
-      [(eq? 'while (car expression)) (while* (car (cdr expression)) (caddr expression) state)]
-      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state)]
-      [(eq? 'return (car expression)) (return* (cdr expression) state)])))
+      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (car (cdr expression)) (caddr expression) state return b continue throw)))]
+      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
+      [(eq? 'break (car expression)) (break state)]
+      [(eq? 'continue (car expression)) (continue state)]
+      [(eq? 'return (car expression)) (return (Operate (cadr expression) state))])))
 
-; while* defines how to handle the keyword 'while'
+; while* defines how to handle the keyword 'while
 (define while*
-  (lambda (condition body state)
+  (lambda (condition body state return break continue throw)
     (if (symboltoBool (Operate condition state))
-        (while* condition body (Mstate body state))
-         state)))
+        (while* condition body (Mstate body state return break continue throw) return break continue throw)
+         (break state))))
+
+(define while
+  (lambda (condition body state return break continue throw)
+    (while condition body (call/cc (lambda (c) (while* condition body state return break c throw))) return break continue throw)))
 
 ; if* defines how to handle the keyword 'if'
 (define if*
-  (lambda (condition body otherwise state)
+  (lambda (condition body otherwise state return break continue throw)
     (if (symboltoBool(Operate condition state))
-        (Mstate body state)
+        (Mstate body state return break continue throw)
         (if (null? otherwise)
             state
-            (Mstate (car otherwise) state)))))
-
-; return* defines how to handle the keyword 'return'
-(define return*
-  (lambda (body state)
-    (Operate body state)))
+            (Mstate (car otherwise) state return break continue throw)))))
 
 ; Assumes infix notation
 (define operator car)
