@@ -10,7 +10,8 @@
   (lambda (filename)
     (Operate 'return (Mstate (parser filename) initialState))))
 
-(define initialState '(()()))
+(define initialLayer '(()()))
+(define initialState (list initialLayer))
 
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
 ; The following mathematical operations are implemented : +, -, *, /, % (including the unary -),
@@ -25,8 +26,9 @@
       [(number?  expression) expression]
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
-      [(and (symbol? expression) (declared? expression state)) (Lookup expression state)]
-      [(and (symbol? expression) (error 'variable "Using variable without declaring it first"))]
+      [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state)]
+      [(and (symbol? expression) (declared? expression state)) (error 'variable "Using variable without instantiating it first")]
+      [(symbol? expression) (error 'variable "Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
       [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
@@ -63,11 +65,11 @@
     (cond
       [(null? expression) state]
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state))]  ; using car and cdr here because this is literally a list, not a list representing something
-      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
+      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state) state)]
       [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
-      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state) (Remove (leftoperand expression) state))]
+      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state) state)]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
-      [(eq? 'return (operator expression)) (Add 'return (Operate (leftoperand expression) state) (Remove (leftoperand expression) state))]
+      [(eq? 'return (operator expression)) (Add 'return (Operate (leftoperand expression) state) state)]
       [(keyword? (operator expression)) (keyword expression state)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
@@ -75,12 +77,24 @@
 ; Only used with the = operator (and syntactic sugar like ++, maybe).
 (define Add
   (lambda (name value state)
-    (cons (cons name (car state)) (cons (cons value (cadr state)) '()))))
+    (cons (list (cons name (car (toplayer state))) (cons (box value) (cadr (toplayer state)))) (cdr state))))
+
+(define toplayer car)
+
+(define AddLayer
+  (lambda (state)
+    (cons initialLayer state)))
+
+(define RemoveLayer cdr)
+
+(define layered?
+  (lambda (lis)
+    (and (pair? (car lis)) (list? (car (car lis))))))
 
 ; Add* is like Add, except it only adds a name. This corresponds to the var keyword. Since adding only happens through the state, we can control which one we use.
 (define Add*
   (lambda (name state)
-    (cons (append (car state) (cons name '())) (cons (cadr state) '()))))
+    (cons (doublecons name (box '()) (toplayer state)) (cdr state))))
 
 ; Helper function. Takes two values and a list containing two lists, and returns the list with the values added to each list with cons.
 ; Also allows Remove to be O(n) instead of O(2^n) without using let.
@@ -93,40 +107,70 @@
   (lambda (lis)
     (cons (cdr (car lis)) (cons (cdr (cadr lis)) '()))))
 
+; Helper function for Remove. Removes a name and its value from a state layer.
+(define RemoveFromLayer
+  (lambda (name layer)
+    (cond
+      [(null? layer) (error 'variable "Variable not declared")]
+      [(null? (car layer)) '(()())]
+      [(and (eq? (car (car layer)) name) (null? (cadr layer))) (cons (cdr (car layer)) '(()))]
+      [(eq? (car (car layer)) name) (doublecdr layer)]
+      [(null? (cadr layer)) (cons (car (RemoveFromLayer name (cons (cdr (car layer)) '(())))) '(()))]
+      [else (doublecons (car (car layer)) (car (cadr layer)) (RemoveFromLayer name (doublecdr layer)))])))
+
 ; Removes a variable and its value from the state.
 ; Right now, it will return the list without the variable and its value whether or not it is declared or initialized.
+; Remove uses a helper function RemoveFromLayer to check each layer, due to the complexity of the cond.
 (define Remove
   (lambda (name state)
-    (cond
-      [(null? (car state)) '(()())]
-      [(and (eq? (car (car state)) name) (null? (cadr state))) (cons (cdr (car state)) '(()))]
-      [(eq? (car (car state)) name) (doublecdr state)]
-      [(null? (cadr state)) (cons (car (Remove name (cons (cdr (car state)) '(())))) '(()))]
-      [else (doublecons (car (car state)) (car (cadr state)) (Remove name (doublecdr state)))])))
+    (if (declared? name (toplayer state))
+      (cons (RemoveFromLayer name (toplayer state)) (cdr state))
+      (Remove name (cdr state)))))
 
 ; Check if a variable has been declared.
 ; Note that the list of values gets thrown out after the first call, as it is not relevant. This avoids the need to handle the case where it is null.
+; This also uses recursion. If state has at least one layer (as opposed to being a single layer), we check each layer.
+; If state is a single layer, we use the logic from project 1.
 (define declared?
   (lambda (name state)
     (cond
-      [(null? (car state)) #f]
+      [(or (null? state) (null? (car state))) #f]
+      [(layered? state) (or (declared? name (toplayer state)) (declared? name (cdr state)))]
       [(eq? name (car (car state))) #t]
       [else (declared? name (cons (cdr (car state)) '()))])))
+
+(define set-value-in-layer
+  (lambda (name value layer)
+    (cond
+      [(null? (car layer)) (error 'variable "Variable not declared")]
+      [(eq? (car (car layer)) name) (begin (set-box! (car (cadr layer)) value) layer)]
+      [else (doublecons (car (car layer)) (car (cadr layer)) (set-value-in-layer name value (doublecdr layer)))])))
+
+(define SetValue
+  (lambda (name value state)
+    (cond
+      [(null? state) (error 'variable "Undeclared variable")]
+      [(declared? name (toplayer state)) (cons (set-value-in-layer name value (toplayer state)) (cdr state))]
+      [else (cons (toplayer state) (SetValue name value (cdr state)))])))
 
 ; Checks if a variable has been instantiated
 (define instantiated?
   (lambda (varname state)
     (cond
+      [(null? state) #f]
+      [(layered? state) (or (instantiated? varname (toplayer state)) (instantiated? varname (cdr state)))]
       [(null? (cadr state)) #f]
-      [(eq? varname (car (car state))) #t]
+      [(and (eq? varname (car (car state))) (not (null? (unbox (car (cadr state)))))) #t]
+      [(eq? varname (car (car state))) #f]
       [else (instantiated? varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())))])))
 
 ; Returns the value of a variable if it is instantiated, or throws an error if it isn't.
 (define Lookup
   (lambda (varname state)
     (cond
+      [(layered? state) (Lookup varname (toplayer state))]
       [(null? (cadr state)) (error 'state "variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
-      [(eq? varname (car (car state))) (car (cadr state))]
+      [(eq? varname (car (car state))) (unbox (car (cadr state)))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())))])))
 
 ; keyword? checks if value is a known keyword
