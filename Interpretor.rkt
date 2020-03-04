@@ -8,7 +8,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) k) (lambda (c) c) (lambda (e m) (error e m)))))))
+    (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) (lambda (e m) (error e m)))))))
 
 (define initialLayer '(()()))
 (define initialState (list initialLayer))
@@ -20,31 +20,31 @@
 ; incorrectly (but it is not hard to add the error check). You do not have to implement short-circuit evaluation of && or ||, but you are welcome to do so.
 ; This is an example of using abstraction to make the code easier to read and maintain
 (define Operate
-  (lambda (expression state)
+  (lambda (expression state throw)
     (cond
-      [(null? expression) (error 'parser "parser should have caught this")]
+      [(null? expression) (throw 'parser "parser should have caught this")]
       [(number?  expression) expression]
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
-      [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state)]
-      [(and (symbol? expression) (declared? expression state)) (error 'variable "Using variable without instantiating it first")]
-      [(symbol? expression) (error 'variable "Using variable without declaring it first")]
-      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state)))]
-      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))]
-      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
-      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state) (Operate (rightoperand expression) state))))] 
-      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
-      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
-      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
-      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state) (Operate (rightoperand expression) state)))]
-      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state)) (symboltoBool(Operate (rightoperand expression) state))))]
-      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state)) (symboltoBool(Operate (rightoperand expression) state))))]
-      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state))))]
-      [else (error 'badop "The operator is not known")]
+      [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
+      [(and (symbol? expression) (declared? expression state)) (throw 'variable "Using variable without instantiating it first")]
+      [(symbol? expression) (throw 'variable "Using variable without declaring it first")]
+      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
+      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
+      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
+      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
+      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
+      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
+      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
+      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))) throw)] 
+      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
+      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
+      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
+      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
+      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)))]
+      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
+      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state throw) throw)) throw)]
+      [else (throw 'badop "The operator is not known")]
       )))
 
 ; Tests if the list has a third element.
@@ -65,9 +65,9 @@
     (cond
       [(null? expression) state]
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
-      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state) state)]
-      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state) state)]
-      [(eq? '= (operator expression)) (error 'variable "Using variable without declaring it first")]
+      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw) state)]
+      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw) state throw)]
+      [(eq? '= (operator expression)) (throw 'variable "Using variable without declaring it first")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
       [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
       [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
@@ -141,18 +141,18 @@
       [else (declared? name (cons (cdr (car state)) '()))])))
 
 (define set-value-in-layer
-  (lambda (name value layer)
+  (lambda (name value layer throw)
     (cond
-      [(null? (car layer)) (error 'variable "Variable not declared")]
+      [(null? (car layer)) (throw 'variable "Variable not declared")]
       [(eq? (car (car layer)) name) (begin (set-box! (car (cadr layer)) value) layer)]
-      [else (doublecons (car (car layer)) (car (cadr layer)) (set-value-in-layer name value (doublecdr layer)))])))
+      [else (doublecons (car (car layer)) (car (cadr layer)) (set-value-in-layer name value (doublecdr layer) throw))])))
 
 (define SetValue
-  (lambda (name value state)
+  (lambda (name value state throw)
     (cond
-      [(null? state) (error 'variable "Undeclared variable")]
-      [(declared? name (toplayer state)) (cons (set-value-in-layer name value (toplayer state)) (cdr state))]
-      [else (cons (toplayer state) (SetValue name value (cdr state)))])))
+      [(null? state) (throw 'variable "Undeclared variable")]
+      [(declared? name (toplayer state)) (cons (set-value-in-layer name value (toplayer state) throw) (cdr state))]
+      [else (cons (toplayer state) (SetValue name value (cdr state) throw))])))
 
 ; Checks if a variable has been instantiated
 (define instantiated?
@@ -167,13 +167,13 @@
 
 ; Returns the value of a variable if it is instantiated, or throws an error if it isn't.
 (define Lookup
-  (lambda (varname state)
+  (lambda (varname state throw)
     (cond
-      [(and (layered? state) (declared? varname (toplayer state))) (Lookup varname (toplayer state))]
-      [(layered? state) (Lookup varname (cdr state))]
-      [(null? (cadr state)) (error 'state "variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
+      [(and (layered? state) (declared? varname (toplayer state))) (Lookup varname (toplayer state) throw)]
+      [(layered? state) (Lookup varname (cdr state) throw)]
+      [(null? (cadr state)) (throw 'state "variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
       [(eq? varname (car (car state))) (unbox (car (cadr state)))]
-      [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())))])))
+      [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
 
 ; keyword? checks if value is a known keyword
 (define keyword?
@@ -191,28 +191,28 @@
 (define keyword
   (lambda (expression state return break continue throw)
     (cond
-      [(null? (car expression)) (error 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
-      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (car (cdr expression)) (caddr expression) state return b continue throw)))]
+      [(null? (car expression)) (throw 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
+      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) state return b continue throw)))]
       [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
-      [(eq? 'break (car expression)) (break state)]
+      [(eq? 'break (car expression)) (break (RemoveLayer state))]
       [(eq? 'continue (car expression)) (continue state)]
-      [(eq? 'return (car expression)) (return (Operate (cadr expression) state))])))
+      [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))])))
 
 ; while* defines how to handle the keyword 'while
 (define while*
   (lambda (condition body state return break continue throw)
-    (if (symboltoBool (Operate condition state))
-        (while* condition body (Mstate body state return break continue throw) return break continue throw)
-         (break state))))
+    (if (symboltoBool (Operate condition state throw) throw)
+        (while* condition body (RemoveLayer (Mstate body state return break continue throw)) return break continue throw)
+        (break state))))
 
 (define while
   (lambda (condition body state return break continue throw)
-    (while condition body (call/cc (lambda (c) (while* condition body state return break c throw))) return break continue throw)))
+    (while condition body (RemoveLayer (call/cc (lambda (c) (while* condition body state return break c throw)))) return break continue throw)))
 
 ; if* defines how to handle the keyword 'if'
 (define if*
   (lambda (condition body otherwise state return break continue throw)
-    (if (symboltoBool(Operate condition state))
+    (if (symboltoBool(Operate condition state throw) throw)
         (Mstate body state return break continue throw)
         (if (null? otherwise)
             state
@@ -225,18 +225,18 @@
 
 ; Convert boolean to symbol
 (define booltoSymbol
-  (lambda (bool)
+  (lambda (bool throw)
     (cond
-    [(null? bool) "error: no bool provided"]
+    [(null? bool) (throw 'bool "no value provided")]
     [(eq? bool #t) 'true]
     [(eq? bool #f) 'false]
-    [else "error: non-boolean provided"])))
+    [else (throw 'bool "Non-boolean argument")])))
     
 ; Convert symbol to boolean
 (define symboltoBool
-  (lambda (val)
+  (lambda (val throw)
     (cond
-      [(null? val) "error: no symbol provided"]
+      [(null? val) (throw 'bool "No argument provided")]
       [(eq? val 'true) #t]
       [(eq? val 'false) #f]
-      [else "error: non-boolean symbol provided"])))
+      [else (throw 'bool "Non-boolean symbol provided")])))
