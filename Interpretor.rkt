@@ -200,8 +200,19 @@
       [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
       [(eq? 'break (car expression)) (break (RemoveLayer state))]
       [(eq? 'continue (car expression)) (continue state)]
-      [(eq? 'throw (car expression)) (throw 'error (Operate (cadr expression) throw))]
+      [(eq? 'try (car expression)) (try* (cadr expression) (caddr expression) (cadddr expression) state return break continue throw)]
+      [(eq? 'catch (car expression)) (Mstate (cddr expression) state return break continue throw)]
+      [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
+      [(eq? 'throw (car expression)) (throw 'state (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))])))
+
+; try* defines how to handle the keyword 'try
+(define try*
+  (lambda (try catch finally state return break continue throw)
+    (define temp (call/cc (lambda (e m) (Mstate try state return break continue (e m)))))
+    (if (list? temp)
+        (Mstate finally temp return break continue throw)
+        (Mstate finally (Mstate (caddr catch) (Add (car (cadr catch)) temp state) return break continue throw) return break continue throw))))
 
 ; while* defines how to handle the keyword 'while
 (define while*
