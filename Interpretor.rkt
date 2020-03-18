@@ -41,7 +41,7 @@
       [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
       [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
       [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)))]
+      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
       [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
       [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state throw) throw)) throw)]
       [else (throw 'badop "The operator is not known")]
@@ -202,7 +202,7 @@
 (define while*
   (lambda (condition body state return break continue throw)
     (if (symboltoBool (Operate condition state throw) throw)
-        (while* condition body (RemoveLayer (Mstate body state return break continue throw)) return break continue throw)
+        (while* condition body (Mstate body state return break continue throw) return break continue throw)
         (break state))))
 
 (define while
