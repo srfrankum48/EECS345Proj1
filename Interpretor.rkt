@@ -10,7 +10,10 @@
   (lambda (filename)
     (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) (lambda (m) (error 'error (valueToString m))))))))
 
+; An Empty layer
 (define initialLayer '(()()))
+
+; The initial value of the state
 (define initialState (list initialLayer))
 
 ; M_value (<value1> <value2> +, state) = M_value(<value1>, state) + M_value(<value2>, state)
@@ -79,14 +82,18 @@
   (lambda (name value state)
     (cons (list (cons name (car (toplayer state))) (cons (box value) (cadr (toplayer state)))) (cdr state))))
 
+; Gets the top layer
 (define toplayer car)
 
+; Adds an emptylayer to the state
 (define AddLayer
   (lambda (state)
     (cons initialLayer state)))
 
+; Removes top layer
 (define RemoveLayer cdr)
 
+; Checks if the given list is a layered state
 (define layered?
   (lambda (lis)
     (and (pair? (car lis)) (list? (car (car lis))))))
@@ -120,6 +127,7 @@
       [(eq? name (car (car state))) #t]
       [else (declared? name (cons (cdr (car state)) '()))])))
 
+; Sets the value of the variable in the given layer 
 (define set-value-in-layer
   (lambda (name value layer throw)
     (cond
@@ -127,6 +135,7 @@
       [(eq? (car (car layer)) name) (begin (set-box! (car (cadr layer)) value) layer)]
       [else (doublecons (car (car layer)) (car (cadr layer)) (set-value-in-layer name value (doublecdr layer) throw))])))
 
+; Sets the value of the innermost variable with the given name
 (define SetValue
   (lambda (name value state throw)
     (cond
@@ -201,6 +210,7 @@
         (while* condition body (Mstate body state return break continue throw) return break continue throw)
         (break state))))
 
+; while defines how to handle the keyword 'while
 (define while
   (lambda (condition body state return break continue throw)
     (while condition body (RemoveLayer (call/cc (lambda (c) (while* condition body state return break c throw)))) return break continue throw)))
