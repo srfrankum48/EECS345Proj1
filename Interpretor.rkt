@@ -185,6 +185,10 @@
       [(eq? 'return word) #t]
       [(eq? 'break word) #t]
       [(eq? 'continue word) #t]
+      [(eq? 'try word) #t]
+      [(eq? 'catch word) #t]
+      [(eq? 'finally word) #t]
+      [(eq? 'throw word) #t]
       [else #f])))
 
 ; keyword 
@@ -196,6 +200,7 @@
       [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
       [(eq? 'break (car expression)) (break (RemoveLayer state))]
       [(eq? 'continue (car expression)) (continue state)]
+      [(eq? 'throw (car expression)) (throw 'error (Operate (cadr expression) throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))])))
 
 ; while* defines how to handle the keyword 'while
