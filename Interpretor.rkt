@@ -8,7 +8,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) (lambda (e m) (error e m)))))))
+    (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) (lambda (m) (error 'error (valueToString m))))))))
 
 (define initialLayer '(()()))
 (define initialState (list initialLayer))
@@ -22,13 +22,13 @@
 (define Operate
   (lambda (expression state throw)
     (cond
-      [(null? expression) (throw 'parser "parser should have caught this")]
+      [(null? expression) (throw "parser: parser should have caught this")]
       [(number?  expression) expression]
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
-      [(and (symbol? expression) (declared? expression state)) (throw 'variable "Using variable without instantiating it first")]
-      [(symbol? expression) (throw 'variable "Using variable without declaring it first")]
+      [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
+      [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
       [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
@@ -44,7 +44,7 @@
       [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
       [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
       [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state throw) throw)) throw)]
-      [else (throw 'badop "The operator is not known")]
+      [else (throw "badop: The operator is not known")]
       )))
 
 ; Tests if the list has a third element.
@@ -67,7 +67,7 @@
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
       [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw) state)]
       [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw) state throw)]
-      [(eq? '= (operator expression)) (throw 'variable "Using variable without declaring it first")]
+      [(eq? '= (operator expression)) (throw "variable: Using variable without declaring it first")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
       [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
       [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
@@ -107,26 +107,6 @@
   (lambda (lis)
     (cons (cdr (car lis)) (cons (cdr (cadr lis)) '()))))
 
-; Helper function for Remove. Removes a name and its value from a state layer.
-(define RemoveFromLayer
-  (lambda (name layer)
-    (cond
-      [(null? layer) (error 'variable "Variable not declared")]
-      [(null? (car layer)) '(()())]
-      [(and (eq? (car (car layer)) name) (null? (cadr layer))) (cons (cdr (car layer)) '(()))]
-      [(eq? (car (car layer)) name) (doublecdr layer)]
-      [(null? (cadr layer)) (cons (car (RemoveFromLayer name (cons (cdr (car layer)) '(())))) '(()))]
-      [else (doublecons (car (car layer)) (car (cadr layer)) (RemoveFromLayer name (doublecdr layer)))])))
-
-; Removes a variable and its value from the state.
-; Right now, it will return the list without the variable and its value whether or not it is declared or initialized.
-; Remove uses a helper function RemoveFromLayer to check each layer, due to the complexity of the cond.
-(define Remove
-  (lambda (name state)
-    (if (declared? name (toplayer state))
-      (cons (RemoveFromLayer name (toplayer state)) (cdr state))
-      (Remove name (cdr state)))))
-
 ; Check if a variable has been declared.
 ; Note that the list of values gets thrown out after the first call, as it is not relevant. This avoids the need to handle the case where it is null.
 ; This also uses recursion. If state has at least one layer (as opposed to being a single layer), we check each layer.
@@ -143,14 +123,14 @@
 (define set-value-in-layer
   (lambda (name value layer throw)
     (cond
-      [(null? (car layer)) (throw 'variable "Variable not declared")]
+      [(null? (car layer)) (throw "variable: Variable not declared")]
       [(eq? (car (car layer)) name) (begin (set-box! (car (cadr layer)) value) layer)]
       [else (doublecons (car (car layer)) (car (cadr layer)) (set-value-in-layer name value (doublecdr layer) throw))])))
 
 (define SetValue
   (lambda (name value state throw)
     (cond
-      [(null? state) (throw 'variable "Undeclared variable")]
+      [(null? state) (throw "variable: Undeclared variable")]
       [(declared? name (toplayer state)) (cons (set-value-in-layer name value (toplayer state) throw) (cdr state))]
       [else (cons (toplayer state) (SetValue name value (cdr state) throw))])))
 
@@ -171,7 +151,7 @@
     (cond
       [(and (layered? state) (declared? varname (toplayer state))) (Lookup varname (toplayer state) throw)]
       [(layered? state) (Lookup varname (cdr state) throw)]
-      [(null? (cadr state)) (throw 'state "variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
+      [(null? (cadr state)) (throw "state: variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
       [(eq? varname (car (car state))) (unbox (car (cadr state)))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
 
@@ -195,7 +175,7 @@
 (define keyword
   (lambda (expression state return break continue throw)
     (cond
-      [(null? (car expression)) (throw 'state "keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
+      [(null? (car expression)) (throw "state: keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
       [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) state return b continue throw)))]
       [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
       [(eq? 'break (car expression)) (break (RemoveLayer state))]
@@ -203,13 +183,13 @@
       [(eq? 'try (car expression)) (try* (cadr expression) (caddr expression) (cadddr expression) state return break continue throw)]
       [(eq? 'catch (car expression)) (Mstate (cddr expression) state return break continue throw)]
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
-      [(eq? 'throw (car expression)) (throw 'state (Operate (cadr expression) state throw))]
+      [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))])))
 
 ; try* defines how to handle the keyword 'try
 (define try*
   (lambda (try catch finally state return break continue throw)
-    (define temp (call/cc (lambda (e m) (Mstate try state return break continue (e m)))))
+    (define temp (call/cc (lambda (t) (Mstate try state return break continue t))))
     (if (list? temp)
         (Mstate finally temp return break continue throw)
         (Mstate finally (Mstate (caddr catch) (Add (car (cadr catch)) temp state) return break continue throw) return break continue throw))))
@@ -243,16 +223,23 @@
 (define booltoSymbol
   (lambda (bool throw)
     (cond
-    [(null? bool) (throw 'bool "no value provided")]
+    [(null? bool) (throw "bool: no value provided")]
     [(eq? bool #t) 'true]
     [(eq? bool #f) 'false]
-    [else (throw 'bool "Non-boolean argument")])))
+    [else (throw "bool: Non-boolean argument")])))
     
 ; Convert symbol to boolean
 (define symboltoBool
   (lambda (val throw)
     (cond
-      [(null? val) (throw 'bool "No argument provided")]
+      [(null? val) (throw "bool: No argument provided")]
       [(eq? val 'true) #t]
       [(eq? val 'false) #f]
-      [else (throw 'bool "Non-boolean symbol provided")])))
+      [else (throw " bool: Non-boolean symbol provided")])))
+
+; Convert value to String
+(define valueToString
+  (lambda (val)
+    (cond
+      [(string? val) val]
+      [(number? val) (number->string val)])))
