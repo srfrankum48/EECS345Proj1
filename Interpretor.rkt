@@ -3,7 +3,7 @@
 ; Niharika Karnik
 
 #lang racket
-(require "simpleParser.rkt")
+(require "functionParser.rkt")
 
 ; interpret starts the parsing of the 
 (define interpret
@@ -27,6 +27,7 @@
     (cond
       [(null? expression) (throw "parser: parser should have caught this")]
       [(number?  expression) expression]
+      [(function? expression) (call/cc (lambda (r) (exec-function (Lookup expression state) (parameters expression) r break continue throw )))]
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
@@ -178,6 +179,7 @@
       [(eq? 'catch word) #t]
       [(eq? 'finally word) #t]
       [(eq? 'throw word) #t]
+      [(eq? 'function word) #t]
       [else #f])))
 
 ; keyword 
@@ -193,7 +195,9 @@
       [(eq? 'catch (car expression)) (Mstate (cddr expression) state return break continue throw)]
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
-      [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))])))
+      [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
+      [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression)) state)])))
+
 
 ; try* defines how to handle the keyword 'try
 (define try*
