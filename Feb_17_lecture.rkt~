@@ -1,8 +1,0 @@
-#lang racket
-; (split '(a b c d e)) => '(a c e) '(b d)
-(define split-cps
-  (lambda (lis return )
-    (cond
-      [(null? lis) (rturn '() '())]
-      [(null? cdr lis) (return lis '())]
-      [else (split-cps (cddr lis) (return (car lis) (cadr lis)))]
