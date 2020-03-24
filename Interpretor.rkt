@@ -8,7 +8,10 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (call/cc (lambda (r) (Mstate (parser filename) initialState r (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) (lambda (m) (error 'error (valueToString m))))))))
+    (Operate '(funcall main ()) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
+
+(define initialError
+  (lambda (m) (error 'error (valueToString m))))
 
 ; An Empty layer
 (define initialLayer '(()()))
@@ -27,11 +30,11 @@
     (cond
       [(null? expression) (throw "parser: parser should have caught this")]
       [(number?  expression) expression]
-      [(function? expression) (call/cc (lambda (r) (exec-function (Lookup expression state) (parameters expression) r break continue throw )))]
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
+      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (caddr expression) state r throw)))]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
@@ -180,6 +183,7 @@
       [(eq? 'finally word) #t]
       [(eq? 'throw word) #t]
       [(eq? 'function word) #t]
+      [(eq? 'funcall word) #t]
       [else #f])))
 
 ; keyword 
@@ -196,8 +200,25 @@
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
-      [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression)) state)])))
+      [(eq? 'funcall (car expression)) (RemoveLayer (exec-function (cadr expression) (cddr expression) (AddLayer state) return throw))]
+      [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
 
+; Left off trying to make recursion work
+
+(define exec-function
+  (lambda (name params state return throw)
+    (letrec ((closure (Lookup name state throw))
+          (environment (caddr closure))
+          (body (cadr closure))
+          (formal-params (car closure)))
+          (if (not (eq? (length params) (length formal-params)))
+              (throw "function: incorrect number of parameters")
+              (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw)))))
+(define make-refs
+  (lambda (env state fp ap throw) 
+    (if (null? fp)
+       env
+       (make-refs ((Add (car fp) (Operate (car ap) state throw) throw) state (cdr fp) (cdr ap))))))
 
 ; try* defines how to handle the keyword 'try
 (define try*
