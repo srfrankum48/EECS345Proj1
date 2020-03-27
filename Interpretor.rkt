@@ -74,7 +74,7 @@
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
       [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw) state)]
       [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw) state throw)]
-      [(eq? '= (operator expression)) (throw "variable: Using variable without declaring it first")]
+      [(eq? '= (operator expression)) (throw "variable: Using variable out of scope")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
       [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
       [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
@@ -200,7 +200,7 @@
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
-      [(eq? 'funcall (car expression)) (RemoveLayer (exec-function (cadr expression) (cddr expression) (AddLayer state) return throw))]
+      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state return throw)]
       [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
 
 ; Left off trying to make recursion work
@@ -218,7 +218,7 @@
   (lambda (env state fp ap throw) 
     (if (null? fp)
        env
-       (make-refs (Add (car fp) (Operate (car ap) state throw) state) state (cdr fp) (cdr ap) throw))))
+       (make-refs (Add (car fp) (Operate (car ap) state throw) env) state (cdr fp) (cdr ap) throw))))
 
 ; try* defines how to handle the keyword 'try
 (define try*
