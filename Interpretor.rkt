@@ -8,7 +8,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Operate '(funcall main ()) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
+    (Operate '(funcall main) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
 
 (define initialError
   (lambda (m) (error 'error (valueToString m))))
@@ -34,7 +34,7 @@
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
-      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (caddr expression) state r throw)))]
+      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
@@ -211,14 +211,14 @@
           (environment (caddr closure))
           (body (cadr closure))
           (formal-params (car closure)))
-          (if (not (eq? (length params) (length formal-params)))
+          (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
               (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw)))))
 (define make-refs
   (lambda (env state fp ap throw) 
     (if (null? fp)
        env
-       (make-refs ((Add (car fp) (Operate (car ap) state throw) throw) state (cdr fp) (cdr ap))))))
+       (make-refs (Add (car fp) (Operate (car ap) state throw) state) state (cdr fp) (cdr ap) throw))))
 
 ; try* defines how to handle the keyword 'try
 (define try*
