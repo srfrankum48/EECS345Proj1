@@ -213,7 +213,7 @@
           (environment (Add name (list formal-params body state) (caddr closure))))
           (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
-              (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw)))))
+              (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
 
 (define make-refs
   (lambda (env state fp ap throw) 
