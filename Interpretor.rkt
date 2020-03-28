@@ -200,7 +200,7 @@
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
-      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state return throw)]
+      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
       [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
 
 ; Left off trying to make recursion work
@@ -208,12 +208,13 @@
 (define exec-function
   (lambda (name params state return throw)
     (letrec ((closure (Lookup name state throw))
-          (environment (caddr closure))
           (body (cadr closure))
-          (formal-params (car closure)))
+          (formal-params (car closure))
+          (environment (Add name (list formal-params body state) (caddr closure))))
           (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
               (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw)))))
+
 (define make-refs
   (lambda (env state fp ap throw) 
     (if (null? fp)
