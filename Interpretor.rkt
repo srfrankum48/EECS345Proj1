@@ -10,6 +10,7 @@
   (lambda (filename)
     (Operate '(funcall main) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
 
+;inital error is the default value of the error continuation
 (define initialError
   (lambda (m) (error 'error (valueToString m))))
 
@@ -203,8 +204,7 @@
       [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
       [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
 
-; Left off trying to make recursion work
-
+;exec-function will execute a function
 (define exec-function
   (lambda (name params state return throw)
     (letrec ((closure (Lookup name state throw))
@@ -215,6 +215,7 @@
               (throw "function: incorrect number of parameters")
               (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
 
+;make-refs will bind formal parameter names to actual parameter 
 (define make-refs
   (lambda (env state fp ap throw) 
     (if (null? fp)
