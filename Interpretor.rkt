@@ -2,13 +2,30 @@
 ; Samantha Frankum
 ; Niharika Karnik
 
+; TODO 4/22: Make class definitions recursive
+
 #lang racket
-(require "functionParser.rkt")
+(require "classParser.rkt")
 
 ; interpret starts the parsing of the 
-(define interpret
+
+(define create-classes
   (lambda (filename)
-    (Operate '(funcall main) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
+    (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError)))
+
+(define exec-function-closure
+  (lambda (closure name params state return throw)
+    (letrec ((body (cadr closure))
+          (formal-params (car closure))
+          (environment (Add name (list formal-params body state) (caddr closure))))
+          (if (not (equal? (length params) (length formal-params)))
+              (throw "function: incorrect number of parameters")
+              (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
+
+(define interpret
+  (lambda (filename classname)
+    (let ((toplevel-state (create-classes filename)))
+      (exec-function-closure (Operate (append (append '(dot) (list classname)) '(main)) toplevel-state initialError) 'main '() toplevel-state (lambda (r) r) initialError))))
 
 ;inital error is the default value of the error continuation
 (define initialError
@@ -36,6 +53,8 @@
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
       [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
+      [(eq? 'dot (operator expression)) (Lookup (caddr expression) (Lookup (cadr expression) state throw) throw)]
+      [(eq? 'new (car expression)) (instance-closure (cadr expression) state throw)]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
@@ -78,7 +97,7 @@
       [(eq? '= (operator expression)) (throw "variable: Using variable out of scope")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
       [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
-      [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
+      [else (keyword expression state return break continue throw)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
@@ -169,29 +188,22 @@
       [(eq? varname (car (car state))) (unbox (car (cadr state)))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
 
-; keyword? checks if value is a known keyword
-(define keyword?
-  (lambda (word)
+; Lookup, but without unboxing. Used to look up closures, which are not in boxes.
+(define Lookup-closure
+  (lambda (varname state throw)
     (cond
-      [(null? word) #f]
-      [(eq? 'while word) #t]
-      [(eq? 'if word) #t]
-      [(eq? 'return word) #t]
-      [(eq? 'break word) #t]
-      [(eq? 'continue word) #t]
-      [(eq? 'try word) #t]
-      [(eq? 'catch word) #t]
-      [(eq? 'finally word) #t]
-      [(eq? 'throw word) #t]
-      [(eq? 'function word) #t]
-      [(eq? 'funcall word) #t]
-      [else #f])))
+      [(and (layered? state) (declared? varname (toplayer state))) (Lookup varname (toplayer state) throw)]
+      [(layered? state) (Lookup varname (cdr state) throw)]
+      [(null? (cadr state)) (throw "state: variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
+      [(eq? varname (car (car state))) (car (cadr state))]
+      [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
 
 ; keyword 
 (define keyword
   (lambda (expression state return break continue throw)
     (cond
-      [(null? (car expression)) (throw "state: keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
+      [(null? (car expression)) (throw "state: keyword invalid")]
+      [(eq? 'class (car expression)) (Add (cadr expression) (class-closure (caddr expression) (cdddr expression) state return throw) state)]
       [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) state return b continue throw)))]
       [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
       [(eq? 'break (car expression)) (break (RemoveLayer state))]
@@ -202,7 +214,19 @@
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
       [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
-      [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
+      [(or (eq? 'function (car expression)) (eq? 'static-function (car expression))) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
+  
+; Creates the class closure
+(define class-closure
+  (lambda (parent body state return throw)
+    (if (null? parent)
+        (Mstate body initialState return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError)
+        (Mstate body (Add 'super (Lookup (cadr parent) state)) initialState return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError))))
+
+; Creates the instance closure, which is just a copy of the class closure
+(define instance-closure
+  (lambda (class state throw)
+    (Lookup-closure class state throw)))
 
 ;exec-function will execute a function
 (define exec-function
@@ -215,7 +239,7 @@
               (throw "function: incorrect number of parameters")
               (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
 
-;make-refs will bind formal parameter names to actual parameter 
+;make-refs will bind formal parameter names to actual parameters
 (define make-refs
   (lambda (env state fp ap throw) 
     (if (null? fp)

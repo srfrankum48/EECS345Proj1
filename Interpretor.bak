@@ -8,8 +8,9 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename)
-    (Operate '(funcall main ()) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
+    (Operate '(funcall main) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
 
+;inital error is the default value of the error continuation
 (define initialError
   (lambda (m) (error 'error (valueToString m))))
 
@@ -34,7 +35,7 @@
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
-      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (caddr expression) state r throw)))]
+      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
@@ -74,7 +75,7 @@
       [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
       [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw) state)]
       [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw) state throw)]
-      [(eq? '= (operator expression)) (throw "variable: Using variable without declaring it first")]
+      [(eq? '= (operator expression)) (throw "variable: Using variable out of scope")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
       [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
       [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
@@ -200,25 +201,26 @@
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
-      [(eq? 'funcall (car expression)) (RemoveLayer (exec-function (cadr expression) (cddr expression) (AddLayer state) return throw))]
+      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
       [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
 
-; Left off trying to make recursion work
-
+;exec-function will execute a function
 (define exec-function
   (lambda (name params state return throw)
     (letrec ((closure (Lookup name state throw))
-          (environment (caddr closure))
           (body (cadr closure))
-          (formal-params (car closure)))
-          (if (not (eq? (length params) (length formal-params)))
+          (formal-params (car closure))
+          (environment (Add name (list formal-params body state) (caddr closure))))
+          (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
-              (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw)))))
+              (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
+
+;make-refs will bind formal parameter names to actual parameter 
 (define make-refs
   (lambda (env state fp ap throw) 
     (if (null? fp)
        env
-       (make-refs ((Add (car fp) (Operate (car ap) state throw) throw) state (cdr fp) (cdr ap))))))
+       (make-refs (Add (car fp) (Operate (car ap) state throw) env) state (cdr fp) (cdr ap) throw))))
 
 ; try* defines how to handle the keyword 'try
 (define try*
