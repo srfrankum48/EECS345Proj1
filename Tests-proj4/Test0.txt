@@ -1,0 +1,7 @@
+class B {
+  var a = 1;
+  static function main() {
+    var b = 1;
+    return b;
+  }
+}

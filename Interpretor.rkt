@@ -25,7 +25,7 @@
 (define interpret
   (lambda (filename classname)
     (let ((toplevel-state (create-classes filename)))
-      (exec-function-closure (Operate (append (append '(dot) (list classname)) '(main)) toplevel-state initialError) 'main '() toplevel-state (lambda (r) r) initialError))))
+      (exec-function-closure (Lookup 'main (Lookup classname toplevel-state initialError) initialError) 'exec '() toplevel-state (lambda (r) r) initialError))))
 
 ;inital error is the default value of the error continuation
 (define initialError
@@ -190,13 +190,13 @@
 
 ; Lookup, but without unboxing. Used to look up closures, which are not in boxes.
 (define Lookup-closure
-  (lambda (varname state throw)
+  (lambda (varname closure throw)
     (cond
-      [(and (layered? state) (declared? varname (toplayer state))) (Lookup varname (toplayer state) throw)]
-      [(layered? state) (Lookup varname (cdr state) throw)]
-      [(null? (cadr state)) (throw "state: variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
-      [(eq? varname (car (car state))) (car (cadr state))]
-      [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
+      [(and (layered? closure) (declared? varname (toplayer closure))) (Lookup varname (toplayer closure) throw)]
+      [(layered? closure) (Lookup varname (cdr closure) throw)]
+      [(null? (cadr closure)) (throw "state: variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
+      [(eq? varname (car (car closure))) (car (cadr closure))]
+      [else (Lookup varname (cons (cdr (car closure)) (cons (cdr (cadr closure)) '())) throw)])))
 
 ; keyword 
 (define keyword
@@ -226,7 +226,7 @@
 ; Creates the instance closure, which is just a copy of the class closure
 (define instance-closure
   (lambda (class state throw)
-    (Lookup-closure class state throw)))
+    (Lookup class state throw)))
 
 ;exec-function will execute a function
 (define exec-function
