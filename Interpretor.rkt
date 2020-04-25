@@ -16,11 +16,10 @@
 (define exec-function-closure
   (lambda (closure name params state return throw)
     (letrec ((body (cadr closure))
-          (formal-params (car closure))
-          (environment (Add name (list formal-params body state) (caddr closure))))
+          (formal-params (car closure)))
           (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
-              (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
+              (return (Mstate body state return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
 
 (define interpret
   (lambda (filename classname)
@@ -54,7 +53,7 @@
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
       [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
       [(eq? 'dot (operator expression)) (Lookup (caddr expression) (Lookup (cadr expression) state throw) throw)]
-      [(eq? 'new (car expression)) (instance-closure (cadr expression) state throw)]
+      [(eq? 'new (operator expression)) (instance-closure (cadr expression) state throw)]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
       [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
@@ -213,6 +212,7 @@
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
+      ;[(and (eq? 'funcall (car expression)) (list? (cadr expression))) (exec-function (Operate (cadr expression) state throw) (cddr expression) state (lambda (v) state) throw)]
       [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
       [(or (eq? 'function (car expression)) (eq? 'static-function (car expression))) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
   
@@ -221,7 +221,7 @@
   (lambda (parent body state return throw)
     (if (null? parent)
         (Mstate body initialState return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError)
-        (Mstate body (Add 'super (Lookup (cadr parent) state)) initialState return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError))))
+        (Mstate body (Add 'super (Lookup (cadr parent) state throw) state) return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError))))
 
 ; Creates the instance closure, which is just a copy of the class closure
 (define instance-closure
