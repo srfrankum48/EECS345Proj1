@@ -11,15 +11,16 @@
 
 (define create-classes
   (lambda (filename)
-    (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError)))
+    (Mstate (parser filename) 'exec initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError)))
 
 (define exec-function-closure
   (lambda (closure name params state return throw)
     (letrec ((body (cadr closure))
-          (formal-params (car closure)))
+          (formal-params (car closure))
+          (type (cadddr closure)))
           (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
-              (return (Mstate body state return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
+              (return (Mstate body name (make-refs (instance-closure type state throw) type state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
 
 (define interpret
   (lambda (filename classname)
@@ -43,7 +44,7 @@
 ; incorrectly (but it is not hard to add the error check). You do not have to implement short-circuit evaluation of && or ||, but you are welcome to do so.
 ; This is an example of using abstraction to make the code easier to read and maintain
 (define Operate
-  (lambda (expression state throw)
+  (lambda (expression type state throw)
     (cond
       [(null? expression) (throw "parser: parser should have caught this")]
       [(number?  expression) expression]
@@ -51,25 +52,26 @@
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
-      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
       [(eq? 'dot (operator expression)) (Lookup (caddr expression) (Lookup (cadr expression) state throw) throw)]
+      [(and (eq? 'funcall (car expression)) (list? (cadr expression))) (call/cc (lambda (r) (exec-function-closure (Operate (cadr expression) type state throw) (cadr (cadr expression)) (append (Lookup (cadr (cadr expression)) state throw) (cddr expression)) state r throw)))]
+      [(eq? 'funcall (operator expression)) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) type state r throw)))]
       [(eq? 'new (operator expression)) (instance-closure (cadr expression) state throw)]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
-      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
-      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))) throw)] 
-      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
-      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
-      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state throw) throw)) throw)]
+      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) type state throw)))]
+      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw))]
+      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw))]
+      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw))]
+      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw))]
+      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw))]
+      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw)) throw)]
+      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) type state throw))) throw)] 
+      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw)) throw)]
+      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw)) throw)]
+      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw)) throw)]
+      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) type state throw) (Operate (rightoperand expression) type state throw)) throw)]
+      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) type state throw) throw) (symboltoBool(Operate (rightoperand expression) type state throw) throw)) throw)]
+      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) type state throw) throw) (symboltoBool(Operate (rightoperand expression) type state throw) throw)) throw)]
+      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) type state throw) throw)) throw)]
       [else (throw "badop: The operator is not known")]
       )))
 
@@ -87,16 +89,16 @@
 ; The idea is to maintain separation between the instantiated and uninstantiated variables. We ensure in our Add and Remove functions that this
 ; is the case.
 (define Mstate
-  (lambda (expression state return break continue throw)
+  (lambda (expression type state return break continue throw)
     (cond
       [(null? expression) state]
-      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
-      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw) state)]
-      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw) state throw)]
+      [(list? (car expression)) (Mstate (cdr expression) type (Mstate (car expression) type state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
+      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) type state throw) state)]
+      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) type state throw) state throw)]
       [(eq? '= (operator expression)) (throw "variable: Using variable out of scope")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
-      [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
-      [else (keyword expression state return break continue throw)])))
+      [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) type (AddLayer state) return break continue throw))]
+      [else (keyword expression type state return break continue throw)])))
 
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
@@ -199,29 +201,33 @@
 
 ; keyword 
 (define keyword
-  (lambda (expression state return break continue throw)
+  (lambda (expression type state return break continue throw)
     (cond
       [(null? (car expression)) (throw "state: keyword invalid")]
-      [(eq? 'class (car expression)) (Add (cadr expression) (class-closure (caddr expression) (cdddr expression) state return throw) state)]
-      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) state return b continue throw)))]
-      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
+      [(eq? 'class (car expression)) (Add (cadr expression) (class-closure (caddr expression) (cdddr expression) (cadr expression) state return throw) state)]
+      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) type state return b continue throw)))]
+      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) type state return break continue throw)]
       [(eq? 'break (car expression)) (break (RemoveLayer state))]
       [(eq? 'continue (car expression)) (continue state)]
-      [(eq? 'try (car expression)) (try* (cadr expression) (caddr expression) (cadddr expression) state return break continue throw)]
-      [(eq? 'catch (car expression)) (Mstate (cddr expression) state return break continue throw)]
-      [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
-      [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
-      [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
-      ;[(and (eq? 'funcall (car expression)) (list? (cadr expression))) (exec-function (Operate (cadr expression) state throw) (cddr expression) state (lambda (v) state) throw)]
-      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
-      [(or (eq? 'function (car expression)) (eq? 'static-function (car expression))) (Add (cadr expression) (list (caddr expression) (cadddr expression) state) state)])))
+      [(eq? 'try (car expression)) (try* (cadr expression) (caddr expression) (cadddr expression) type state return break continue throw)]
+      [(eq? 'catch (car expression)) (Mstate (cddr expression) type state return break continue throw)]
+      [(eq? 'finally (car expression)) (Mstate (cdr expression) type state return break continue throw)]
+      [(eq? 'throw (car expression)) (throw (Operate (cadr expression) type state throw))]
+      [(eq? 'return (car expression)) (return (Operate (cadr expression) type state throw))]
+      [(and (eq? 'funcall (car expression)) (list? (cadr expression))) (exec-function-closure (Operate (cadr expression) state throw) (append (Lookup (cadr (cadr expression)) state throw) (cddr expression)) state (lambda (v) state) throw)]
+      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) type state (lambda (v) state) throw)]
+      [(eq? 'function (car expression)) (Add (cadr expression) (list (cons 'this (caddr expression)) (cadddr expression) state type) state)]
+      [(eq? 'static-function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression) state type) state)])))
+;(static-function main () body)
+;(function f () body)
+; (funcall (dot a add) 10 2)
   
 ; Creates the class closure
 (define class-closure
-  (lambda (parent body state return throw)
+  (lambda (parent body type state return throw)
     (if (null? parent)
-        (Mstate body initialState return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError)
-        (Mstate body (Add 'super (Lookup (cadr parent) state throw) state) return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError))))
+        (Mstate body type initialState return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError)
+        (Mstate body type (Add 'super (Lookup (cadr parent) state throw) state) return (lambda (b) (error 'flow "Breaking outside of loop")) (lambda (c) c) initialError))))
 
 ; Creates the instance closure, which is just a copy of the class closure
 (define instance-closure
@@ -230,50 +236,51 @@
 
 ;exec-function will execute a function
 (define exec-function
-  (lambda (name params state return throw)
+  (lambda (name params type state return throw)
     (letrec ((closure (Lookup name state throw))
           (body (cadr closure))
           (formal-params (car closure))
-          (environment (Add name (list formal-params body state) (caddr closure))))
+          (environment (Add name (list formal-params body state) (caddr closure)))
+          (type-function (caddr closure)))
           (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
-              (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
+              (return (Mstate body type-function (make-refs environment type-function state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
 
 ;make-refs will bind formal parameter names to actual parameters
 (define make-refs
-  (lambda (env state fp ap throw) 
+  (lambda (env type state fp ap throw) 
     (if (null? fp)
        env
-       (make-refs (Add (car fp) (Operate (car ap) state throw) env) state (cdr fp) (cdr ap) throw))))
+       (make-refs (Add (car fp) (Operate (car ap) type state throw) env) type state (cdr fp) (cdr ap) throw))))
 
 ; try* defines how to handle the keyword 'try
 (define try*
-  (lambda (try catch finally state return break continue throw)
-    (define temp (call/cc (lambda (t) (Mstate try state return break continue t))))
+  (lambda (try catch finally type state return break continue throw)
+    (define temp (call/cc (lambda (t) (Mstate try type state return break continue t))))
     (if (list? temp)
-        (Mstate finally temp return break continue throw)
-        (Mstate finally (Mstate (caddr catch) (Add (car (cadr catch)) temp state) return break continue throw) return break continue throw))))
+        (Mstate finally type temp return break continue throw)
+        (Mstate finally type (Mstate (caddr catch) type (Add (car (cadr catch)) temp state) return break continue throw) return break continue throw))))
 
 ; while* defines how to handle the keyword 'while
 (define while*
-  (lambda (condition body state return break continue throw)
-    (if (symboltoBool (Operate condition state throw) throw)
-        (while* condition body (Mstate body state return break continue throw) return break continue throw)
+  (lambda (condition body type state return break continue throw)
+    (if (symboltoBool (Operate condition type state throw) throw)
+        (while* condition body (Mstate body type state return break continue throw) return break continue throw)
         (break state))))
 
 ; while defines how to handle the keyword 'while
 (define while
-  (lambda (condition body state return break continue throw)
-    (while condition body (RemoveLayer (call/cc (lambda (c) (while* condition body state return break c throw)))) return break continue throw)))
+  (lambda (condition body type state return break continue throw)
+    (while condition body type (RemoveLayer (call/cc (lambda (c) (while* condition body type state return break c throw)))) return break continue throw)))
 
 ; if* defines how to handle the keyword 'if'
 (define if*
-  (lambda (condition body otherwise state return break continue throw)
-    (if (symboltoBool(Operate condition state throw) throw)
-        (Mstate body state return break continue throw)
+  (lambda (condition body otherwise type state return break continue throw)
+    (if (symboltoBool(Operate condition type state throw) throw)
+        (Mstate body type state return break continue throw)
         (if (null? otherwise)
             state
-            (Mstate (car otherwise) state return break continue throw)))))
+            (Mstate (car otherwise) type state return break continue throw)))))
 
 ; Assumes infix notation
 (define operator car)
