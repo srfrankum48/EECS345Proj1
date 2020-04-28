@@ -2,11 +2,39 @@
 ; Samantha Frankum
 ; Niharika Karnik
 #lang racket
-(require "functionParser.rkt")
+(require "classParser.rkt")
 ; interpret starts the parsing of the 
 (define interpret
+  (lambda (filename classname)
+    (exec-main classname (airquotes-compile filename) initialError)))
+
+; "Compiles" the code. It actually just creates the global layer, but this functions similarly to compiling.
+(define airquotes-compile
   (lambda (filename)
-    (Operate '(funcall main) (Mstate (parser filename) initialState (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) initialError) initialError)))
+    (compile-classes (parser filename) initialError)))
+
+(define compile-classes
+  (lambda (parsed-classes throw)
+    (if (null? parsed-classes)
+      '()
+      (cons (doublecons (cadr (car parsed-classes)) (class-closure (car (car parsed-classes)) (caddr (car parsed-classes)) (cadddr (car parsed-classes)) initialState throw) initialLayer)
+            (compile-classes (cdr parsed-classes) throw)))))
+
+(define instance-closure
+  (lambda (class classes throw)
+    (cons class (instance-closure* (cadr (Lookup-closure class classes throw)) throw))))
+
+(define instance-closure*
+  (lambda (template throw)
+    (cond
+      [(null? (car template)) template]
+      [(not (list? (unbox (car (cadr template)))))(doublecons (car (car template)) (box (unbox (car (cadr template))))
+                                                        (instance-closure* (doublecdr template) throw))]
+      [else (instance-closure* (doublecdr template) throw)])))
+
+(define exec-main
+  (lambda (class classdefs throw)
+    (exec-function 'main '() (append (cdr (Lookup-closure class classdefs throw)) classdefs) (lambda (r) r) throw 'void '())))
 
 ;inital error is the default value of the error continuation
 (define initialError
@@ -23,7 +51,7 @@
 ; incorrectly (but it is not hard to add the error check). You do not have to implement short-circuit evaluation of && or ||, but you are welcome to do so.
 ; This is an example of using abstraction to make the code easier to read and maintain
 (define Operate
-  (lambda (expression state throw)
+  (lambda (expression state throw type instance)
     (cond
       [(null? expression) (throw "parser: parser should have caught this")]
       [(number?  expression) expression]
@@ -31,25 +59,31 @@
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
+      [(eq? (operator expression) 'new) (instance-closure (leftoperand expression) state throw)]
+      [(eq? (operator expression) 'static-function) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
       [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
-      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw)))]
-      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))]
-      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw))) throw)] 
-      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state throw) (Operate (rightoperand expression) state throw)) throw)]
-      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
-      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw) throw)) throw)]
-      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression) state throw) throw)) throw)]
+      [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw type instance)))]
+      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression type instance) state throw type instance))]
+      [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression type instance) state throw type instance))]
+      [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression type instance) state throw type instance))]
+      [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance))]
+      [(eq? '% (operator expression)) (remainder (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance))]
+      [(equal? '== (operator expression)) (booltoSymbol(eq? (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance)) throw)]
+      [(eq? '!= (operator expression)) (booltoSymbol(not (eq? (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance))) throw)] 
+      [(eq? '< (operator expression)) (booltoSymbol(< (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance)) throw)]
+      [(eq? '> (operator expression)) (booltoSymbol(> (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance)) throw)]
+      [(eq? '<= (operator expression))(booltoSymbol(<= (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance)) throw)]
+      [(eq? '>= (operator expression)) (booltoSymbol(>= (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance)) throw)]
+      [(eq? '&& (operator expression)) (booltoSymbol(and (symboltoBool(Operate (leftoperand expression) state throw type instance) throw) (symboltoBool(Operate (rightoperand expression) state throw type instance) throw)) throw)]
+      [(eq? '|| (operator expression)) (booltoSymbol(or (symboltoBool(Operate (leftoperand expression type instance) state throw) throw) (symboltoBool(Operate (rightoperand expression) state throw type instance) throw)) throw)]
+      [(eq? '! (operator expression)) (booltoSymbol(not (symboltoBool(Operate (leftoperand expression type instance) state throw) throw)) throw)]
       [else (throw "badop: The operator is not known")]
       )))
+
+(define dot
+  (lambda (dot lhs
+
 ; Tests if the list has a third element.
 (define third?
   (lambda (lis)
@@ -63,16 +97,16 @@
 ; The idea is to maintain separation between the instantiated and uninstantiated variables. We ensure in our Add and Remove functions that this
 ; is the case.
 (define Mstate
-  (lambda (expression state return break continue throw)
+  (lambda (expression state return break continue throw type instance)
     (cond
       [(null? expression) state]
-      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw) return break continue throw)]  ; using car and cdr here because this is literally a list, not a list representing something
-      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw) state)]
-      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw) state throw)]
+      [(list? (car expression)) (Mstate (cdr expression) (Mstate (car expression) state return break continue throw type instance) return break continue throw type instance)]  ; using car and cdr here because this is literally a list, not a list representing something
+      [(and (eq? 'var (operator expression)) (third? expression)) (Add (leftoperand expression) (Operate (rightoperand expression) state throw type instance) state)]
+      [(and (equal? '= (operator expression)) (declared? (leftoperand expression) state))(SetValue (leftoperand expression) (Operate (rightoperand expression) state throw type instance) state throw)]
       [(eq? '= (operator expression)) (throw "variable: Using variable out of scope")]
       [(eq? 'var (operator expression)) (Add* (leftoperand expression) state)]
-      [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw))]
-      [(keyword? (operator expression)) (keyword expression state return break continue throw)])))
+      [(eq? 'begin (operator expression)) (RemoveLayer (Mstate (cdr expression) (AddLayer state) return break continue throw type instance))]
+      [else (keyword expression state return break continue throw type instance)])))
 ; Abstraction is maintained through the use of Add, Add*, Remove, and Lookup functions as the only ways of accessing the state.
 ; Add is exactly the way we defined in class: Add(name, value, state) -> state with value as the value of name.
 ; Only used with the = operator (and syntactic sugar like ++, maybe).
@@ -149,41 +183,44 @@
       [(null? (cadr state)) (throw "state: variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
       [(eq? varname (car (car state))) (unbox (car (cadr state)))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
-; keyword? checks if value is a known keyword
-(define keyword?
-  (lambda (word)
+
+(define Lookup-closure
+  (lambda (varname state throw)
     (cond
-      [(null? word) #f]
-      [(eq? 'while word) #t]
-      [(eq? 'if word) #t]
-      [(eq? 'return word) #t]
-      [(eq? 'break word) #t]
-      [(eq? 'continue word) #t]
-      [(eq? 'try word) #t]
-      [(eq? 'catch word) #t]
-      [(eq? 'finally word) #t]
-      [(eq? 'throw word) #t]
-      [(eq? 'function word) #t]
-      [(eq? 'funcall word) #t]
-      [else #f])))
+      [(and (layered? state) (declared? varname (toplayer state))) (Lookup-closure varname (toplayer state) throw)]
+      [(layered? state) (Lookup-closure varname (cdr state) throw)]
+      [(null? (cadr state)) (throw "state: variable has not been initialized")]  ; if instantiated is used in Mstate, should never happen
+      [(eq? varname (car (car state))) (car (cadr state))]
+      [else (Lookup-closure varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
+
 ; keyword 
 (define keyword
-  (lambda (expression state return break continue throw)
+  (lambda (expression state return break continue throw type instance)
     (cond
       [(null? (car expression)) (throw "state: keyword invalid")] ; this should never happen since check if keyword prior to calling keyword
-      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) state return b continue throw)))]
-      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw)]
+      [(eq? 'while (car expression)) (call/cc (lambda (b)(while (cadr expression) (caddr expression) state return b continue throw type instance)))]
+      [(eq? 'if (car expression)) (if* (cadr expression) (caddr expression) (cdddr expression) state return break continue throw type instance)]
       [(eq? 'break (car expression)) (break (RemoveLayer state))]
       [(eq? 'continue (car expression)) (continue state)]
-      [(eq? 'try (car expression)) (try* (cadr expression) (caddr expression) (cadddr expression) state return break continue throw)]
-      [(eq? 'catch (car expression)) (Mstate (cddr expression) state return break continue throw)]
-      [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw)]
+      [(eq? 'try (car expression)) (try* (cadr expression) (caddr expression) (cadddr expression) state return break continue throw type instance)]
+      [(eq? 'catch (car expression)) (Mstate (cddr expression) state return break continue throw type instance)]
+      [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw type instance)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
-      [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw))]
-      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw)]
-      [(eq? 'function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression)                                                                   (lambda (s t) (make-env (cadr expression) s t))) state)])))
+      [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw type instance))]
+      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw type instance)]
+      [(eq? 'class (car expression)) (Add (cadr expression) (class-closure (caddr expression) (cadddr expression) state throw) state)]
+      [(eq? 'function (car expression)) (Add (cadr expression) (list (cons 'this (caddr expression)) (cadddr expression)
+                                                                    (lambda (s t) (make-env (cadr expression) s t))
+                                                                    (lambda (s t) (Lookup-closure (car instance) s t)) state))]
+      [(eq? 'static-function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression)
+                                                                     (lambda (s t) (make-env (cadr expression) s t))) state)])))
 
 (define pop-toplayer cdr)
+
+(define class-closure
+  (lambda (class parent body state throw)
+    (list parent (toplayer (Mstate body state (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop"))
+                               (lambda (c) c) throw class (list class))))))
 
 ; Create the state for executing a function from the current state when the function is called.
 ; We do a cascading recursive list search for the function, first looking for the layer it is in, and then its actual defintion.
@@ -195,13 +232,13 @@
       [(null? state)(throw "state: state should not be empty")]
       [(and (layered? state) (declared? name (toplayer state))) (cons (make-env name (toplayer state) throw) (pop-toplayer state))]
       [(layered? state) (make-env name (pop-toplayer state) throw)]
-      [(null? (cadr state)) (throw "state: function not in scope")]
+      [(null? (cadr state)) (throw "state: function or class not in scope")]
       [(eq? name (car (car state))) state]
       [else (make-env name (doublecdr state) throw)])))
 
 ;exec-function will execute a function
 (define exec-function
-  (lambda (name params state return throw)
+  (lambda (name params state return throw type instance)
     (letrec ((closure (Lookup name state throw))
           (body (cadr closure))
           (formal-params (car closure))
@@ -209,39 +246,42 @@
           (environment (env-func state throw)))
           (if (not (equal? (length params) (length formal-params)))
               (throw "function: incorrect number of parameters")
-              (return (Mstate body (make-refs environment state formal-params params throw) return (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw))))))
+              (return (Mstate body (make-refs environment state formal-params params throw type instance) return
+                              (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw type instance))))))
 
 ;make-refs will bind formal parameter names to actual parameter 
 (define make-refs
-  (lambda (env state fp ap throw) 
+  (lambda (env state fp ap throw type instance) 
     (if (null? fp)
        env
-       (make-refs (Add (car fp) (Operate (car ap) state throw) env) state (cdr fp) (cdr ap) throw))))
+       (make-refs (Add (car fp) (Operate (car ap) state throw) env) state (cdr fp) (cdr ap) throw type instance))))
 ; try* defines how to handle the keyword 'try
 (define try*
-  (lambda (try catch finally state return break continue throw)
+  (lambda (try catch finally state return break continue throw type instance)
     (define temp (call/cc (lambda (t) (Mstate try state return break continue t))))
     (if (list? temp)
-        (Mstate finally temp return break continue throw)
-        (Mstate finally (Mstate (caddr catch) (Add (car (cadr catch)) temp state) return break continue throw) return break continue throw))))
+        (Mstate finally temp return break continue throw type instance)
+        (Mstate finally (Mstate (caddr catch) (Add (car (cadr catch)) temp state) return break continue throw type instance)
+                return break continue throw type instance))))
 ; while* defines how to handle the keyword 'while
 (define while*
-  (lambda (condition body state return break continue throw)
-    (if (symboltoBool (Operate condition state throw) throw)
-        (while* condition body (Mstate body state return break continue throw) return break continue throw)
+  (lambda (condition body state return break continue throw type instance)
+    (if (symboltoBool (Operate condition state throw) throw type instance)
+        (while* condition body (Mstate body state return break continue throw type instance) return break continue throw)
         (break state))))
 ; while defines how to handle the keyword 'while
 (define while
-  (lambda (condition body state return break continue throw)
-    (while condition body (RemoveLayer (call/cc (lambda (c) (while* condition body state return break c throw)))) return break continue throw)))
+  (lambda (condition body state return break continue throw type instance)
+    (while condition body (RemoveLayer (call/cc (lambda (c) (while* condition body state return break c throw type instance))))
+           return break continue throw type instance)))
 ; if* defines how to handle the keyword 'if'
 (define if*
-  (lambda (condition body otherwise state return break continue throw)
+  (lambda (condition body otherwise state return break continue throw type instance)
     (if (symboltoBool(Operate condition state throw) throw)
-        (Mstate body state return break continue throw)
+        (Mstate body state return break continue throw type instance)
         (if (null? otherwise)
             state
-            (Mstate (car otherwise) state return break continue throw)))))
+            (Mstate (car otherwise) state return break continue throw type instance)))))
 ; Assumes infix notation
 (define operator car)
 (define leftoperand cadr)

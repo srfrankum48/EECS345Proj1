@@ -2,6 +2,6 @@ class B {
   var a = 1;
   static function main() {
     var b = new B();
-    return b;
+    return a;
   }
 }
