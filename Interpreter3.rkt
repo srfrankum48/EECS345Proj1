@@ -6,7 +6,7 @@
 ; interpret starts the parsing of the 
 (define interpret
   (lambda (filename classname)
-    (exec-main classname (airquotes-compile filename) initialError)))
+    (exec-main classname (airquotes-compile filename) initialError (airquotes-compile filename))))
 
 ; "Compiles" the code. It actually just creates the global layer, but this functions similarly to compiling.
 (define airquotes-compile
@@ -18,10 +18,10 @@
   (lambda (parsed-classes throw)
     (if (null? parsed-classes)
       '()
-      (cons (doublecons (cadr (car parsed-classes)) (class-closure (car (car parsed-classes)) (caddr (car parsed-classes)) (cadddr (car parsed-classes)) initialState throw) initialLayer)
+      (cons (doublecons (cadr (car parsed-classes)) (class-closure (cadr (car parsed-classes)) (caddr (car parsed-classes)) (cadddr (car parsed-classes)) initialState throw) initialLayer)
             (compile-classes (cdr parsed-classes) throw)))))
 
-; Creates an instance closure
+; Creates an instance closure, which is usable as a state layer I think
 (define instance-closure
   (lambda (class classes throw)
     (cons class (instance-closure* (cadr (Lookup-closure class classes throw)) throw))))
@@ -37,8 +37,8 @@
 
 ; Execute the main method
 (define exec-main
-  (lambda (class classdefs throw)
-    (exec-function 'main '() (append (cdr (Lookup-closure class classdefs throw)) classdefs) (lambda (r) r) throw 'void '())))
+  (lambda (class classdefs throw type-list)
+    (exec-function 'main '() (append (cdr (Lookup-closure class classdefs throw)) classdefs) (lambda (r) r) throw type-list '())))
 
 ;inital error is the default value of the error continuation
 (define initialError
@@ -62,13 +62,15 @@
       [(eq? 'true expression) 'true]
       [(eq? 'false expression) 'false]
       [(and (symbol? expression) (instantiated? expression state)) (Lookup expression state throw)]
+      [(and (symbol? (car expression)) (declared? (car expression) state)) expression]
       [(and (symbol? expression) (declared? expression state)) (throw "variable: Using variable without instantiating it first")]
       [(eq? (operator expression) 'new) (instance-closure (leftoperand expression) state throw)]
       [(eq? (operator expression) 'static-function) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
-      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-function (cadr expression) (cddr expression) state r throw)))]
+      [(eq? (operator expression) 'dot)(Lookup (rightoperand expression) (cdr (Lookup (leftoperand expression) state throw)) throw)]
+      [(eq? (operator expression) 'funcall) (call/cc (lambda (r)(exec-with-dot (cadr expression) (cddr expression) state r throw)))]
       [(symbol? expression) (throw "variable: Using variable without declaring it first")]
       [(and (eq? '- (operator expression)) (not (third? expression)) (- (Operate (leftoperand expression) state throw type instance)))]
-      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression type instance) state throw type instance))]
+      [(eq? '+ (operator expression)) (+ (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance))]
       [(eq? '- (operator expression)) (- (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression type instance) state throw type instance))]
       [(eq? '* (operator expression)) (* (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression type instance) state throw type instance))]
       [(eq? '/ (operator expression)) (quotient (Operate (leftoperand expression) state throw type instance) (Operate (rightoperand expression) state throw type instance))]
@@ -85,8 +87,24 @@
       [else (throw "badop: The operator is not known")]
       )))
 
-; Just a lookup right now
-(define dot Lookup)
+(define Lookup-class-closure
+  (lambda (name state throw)
+    (cdr (Lookup-closure name state throw))))
+
+; Executes a function by closure. We use this so we can look up a function in the class, and then execute it in an instance.
+(define exec-with-dot
+  (lambda (dot params state return throw)
+    (letrec ((instance (Lookup (cadr dot) state throw))
+            (closure (Lookup (caddr dot) (Lookup-class-closure (car instance) state throw) throw))
+            (class (car instance))
+             (body (cadr closure))
+             (formal-params (car closure))
+             (env-func (caddr closure))
+             (environment (cdr (env-func state throw))))
+          (if (not (equal? (length params) (- (length formal-params) 1)))
+              (throw "function: incorrect number of parameters")
+              (return (Mstate body (make-refs environment state formal-params (cons instance params) throw class instance) return
+                              (lambda (k) (error 'flow "Breaking outside of while loop")) (lambda (c) c) throw class instance))))))
 
 ; Tests if the list has a third element.
 (define third?
@@ -216,9 +234,10 @@
       [(eq? 'class (car expression)) (Add (cadr expression) (class-closure (caddr expression) (cadddr expression) state throw) state)]
       [(eq? 'function (car expression)) (Add (cadr expression) (list (cons 'this (caddr expression)) (cadddr expression)
                                                                     (lambda (s t) (make-env (cadr expression) s t))
-                                                                    (lambda (s t) (Lookup-closure (car instance) s t)) state))]
+                                                                    (lambda (s t) (Lookup-closure (car instance) s t))) state)]
       [(eq? 'static-function (car expression)) (Add (cadr expression) (list (caddr expression) (cadddr expression)
                                                                      (lambda (s t) (make-env (cadr expression) s t))) state)])))
+
 
 (define pop-toplayer cdr)
 
@@ -260,7 +279,7 @@
   (lambda (env state fp ap throw type instance) 
     (if (null? fp)
        env
-       (make-refs (Add (car fp) (Operate (car ap) state throw) env) state (cdr fp) (cdr ap) throw type instance))))
+       (make-refs (Add (car fp) (Operate (car ap) state throw type instance) env) state (cdr fp) (cdr ap) throw type instance))))
 ; try* defines how to handle the keyword 'try
 (define try*
   (lambda (try catch finally state return break continue throw type instance)
