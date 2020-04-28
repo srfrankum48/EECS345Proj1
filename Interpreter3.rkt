@@ -170,6 +170,7 @@
       [(null? state) #f]
       [(null? (car state)) #f]
       [(layered? state) (or (declared? name (toplayer state)) (declared? name (cdr state)))]
+      [(and (list? name) (eq? (car name) 'dot)) (declared? (caddr name) (cdr (Lookup (cadr name) state initialError)))]
       [(eq? name (car (car state))) #t]
       [else (declared? name (cons (cdr (car state)) '()))])))
 ; Sets the value of the variable in the given layer 
@@ -178,6 +179,7 @@
     (cond
       [(null? (car layer)) (throw "variable: Variable not declared")]
       [(eq? (car (car layer)) name) (begin (set-box! (car (cadr layer)) value) layer)]
+      [(list? name) (set-value-in-layer (caddr name) value (cdr (Lookup (cadr name) layer throw)) throw)]
       [else (doublecons (car (car layer)) (car (cadr layer)) (set-value-in-layer name value (doublecdr layer) throw))])))
 ; Sets the value of the innermost variable with the given name
 (define SetValue
@@ -230,8 +232,9 @@
       [(eq? 'finally (car expression)) (Mstate (cdr expression) state return break continue throw type instance)]
       [(eq? 'throw (car expression)) (throw (Operate (cadr expression) state throw))]
       [(eq? 'return (car expression)) (return (Operate (cadr expression) state throw type instance))]
-      [(eq? 'funcall (car expression)) (exec-function (cadr expression) (cddr expression) state (lambda (v) state) throw type instance)]
+      [(eq? 'funcall (car expression)) (exec-with-dot (cadr expression) (cddr expression) state (lambda (r) state) throw)]
       [(eq? 'class (car expression)) (Add (cadr expression) (class-closure (caddr expression) (cadddr expression) state throw) state)]
+      [(eq? 'dot (car expression)) (Lookup (rightoperand expression) (cdr (Lookup (leftoperand expression) state throw)) throw)]
       [(eq? 'function (car expression)) (Add (cadr expression) (list (cons 'this (caddr expression)) (cadddr expression)
                                                                     (lambda (s t) (make-env (cadr expression) s t))
                                                                     (lambda (s t) (Lookup-closure (car instance) s t))) state)]
@@ -254,7 +257,7 @@
 (define make-env
   (lambda (name state throw)
     (cond
-      [(null? state)(throw "state: state should not be empty")]
+     ; [(null? state)(throw "state: state should not be empty")]
       [(and (layered? state) (declared? name (toplayer state))) (cons (make-env name (toplayer state) throw) (pop-toplayer state))]
       [(layered? state) (make-env name (pop-toplayer state) throw)]
       [(null? (cadr state)) (throw "state: function or class not in scope")]
