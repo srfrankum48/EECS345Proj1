@@ -13,6 +13,7 @@
   (lambda (filename)
     (compile-classes (parser filename) initialError)))
 
+; Turns all of the classes into a state with class closures
 (define compile-classes
   (lambda (parsed-classes throw)
     (if (null? parsed-classes)
@@ -20,10 +21,12 @@
       (cons (doublecons (cadr (car parsed-classes)) (class-closure (car (car parsed-classes)) (caddr (car parsed-classes)) (cadddr (car parsed-classes)) initialState throw) initialLayer)
             (compile-classes (cdr parsed-classes) throw)))))
 
+; Creates an instance closure
 (define instance-closure
   (lambda (class classes throw)
     (cons class (instance-closure* (cadr (Lookup-closure class classes throw)) throw))))
 
+; Helper function to extract just the variables (we look up the functions from the class)
 (define instance-closure*
   (lambda (template throw)
     (cond
@@ -32,6 +35,7 @@
                                                         (instance-closure* (doublecdr template) throw))]
       [else (instance-closure* (doublecdr template) throw)])))
 
+; Execute the main method
 (define exec-main
   (lambda (class classdefs throw)
     (exec-function 'main '() (append (cdr (Lookup-closure class classdefs throw)) classdefs) (lambda (r) r) throw 'void '())))
@@ -81,8 +85,8 @@
       [else (throw "badop: The operator is not known")]
       )))
 
-(define dot
-  (lambda (dot lhs
+; Just a lookup right now
+(define dot Lookup)
 
 ; Tests if the list has a third element.
 (define third?
@@ -184,6 +188,7 @@
       [(eq? varname (car (car state))) (unbox (car (cadr state)))]
       [else (Lookup varname (cons (cdr (car state)) (cons (cdr (cadr state)) '())) throw)])))
 
+; Lookup, but for values that are not in boxes (class closures).
 (define Lookup-closure
   (lambda (varname state throw)
     (cond
@@ -217,6 +222,7 @@
 
 (define pop-toplayer cdr)
 
+; Creates the class closure by running Mstate on the body to create function closures
 (define class-closure
   (lambda (class parent body state throw)
     (list parent (toplayer (Mstate body state (lambda (r) r) (lambda (k) (error 'flow "Breaking outside of while loop"))
